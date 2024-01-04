@@ -9,7 +9,10 @@ class SFTWrapper(_Wrapper):
         return self.model(**inputs)
 
     def training_step(self, batch, batch_idx):
-        return self(**batch).loss
+        loss = self(**batch).loss
+        self.log("train_loss", loss)
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        return {'loss': self(**batch).loss}
+        loss = self(**batch).loss
+        self.log("val_loss", loss)
+        return {'loss': loss}

@@ -1,0 +1,20 @@
+[model]
+hf_model = "tiiuae/falcon-rw-1b"
+#hf_tokenizer defaults to hf_model
+
+[dataset]
+hf_name = "euirim/goodwiki"
+use_split = "train" # optional, would otherwise not pass split= and thereby use all splits
+truncate = 256 # always done before dm.init and after preprocessing
+
+[dataset.preprocess]
+type = "simple_text"
+column_name = "markdown"
+
+[trainer]
+opitmizer = "adamw"
+lr = "1e-5"
+scheduler = "linear"
+max_epochs = 1
+accelerator = "gpu"
+devices = 1

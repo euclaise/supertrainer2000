@@ -1,14 +1,14 @@
 import lightning as L
 import transformers
-from torch.optim import Optimizer
-from torch.optim import lr_scheduler
+from torch.optim import Optimizer,  lr_scheduler
 from typing import Optional, Dict, Literal, Callable
 from ..datasets import DataModule
+    
 
 class _Wrapper(L.LightningModule):
     def __init__(self,
         model: transformers.PreTrainedModel,
-        data_module: DataModule,
+        batch_size: int,
         optimizer: Optimizer,
         scheduler: Callable,
         scheduler_config: Optional[Dict] = None,
@@ -16,10 +16,8 @@ class _Wrapper(L.LightningModule):
     ):
         super().__init__()
         self.model = model
-        self.data_module = data_module
-        self.optimizer_cls = optimizer
-        self.scheduler_fn = scheduler
-        self.scheduler_step = scheduler_step
+        self.optimizer = optimizer
+        self.scheduler = scheduler
         self.optim_params = optim_params
 
         if scheduler_config is not None:
@@ -32,14 +30,11 @@ class _Wrapper(L.LightningModule):
     
     def configure_optimizers(self):
         scheduler = self.scheduler_config
-        optim = self.optimizer_cls(params = self.parameters(), lr=self.lr)
-
-
         total_steps = self.trainer.estimated_stepping_batches if scheduler['interval'] == 'step' else self.trainer.max_epochs
-    
-        scheduler['scheduler'] = self.scheduler(optim, total_steps=total_steps)
 
-        return [self.optimizer], [self.scheduler]
+        scheduler['scheduler'] = self.scheduler(self.optimizer, total_steps=total_steps)
+
+        return [self.optimizer], [scheduler]
 
     def save(self, *args, **kwargs):
         self.model.save_pretrained(*args, **kwargs)

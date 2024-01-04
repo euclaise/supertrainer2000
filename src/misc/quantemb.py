@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-from ..utils import find_and_replace
 
 class QuantEmbedding(nn.Module):
     def __init__(self, old_emb: nn.Embedding):
@@ -33,9 +32,3 @@ class QuantEmbedding(nn.Module):
         weight = (self.weight.to("cpu").float() + self.means.cpu()) * self.scales.cpu()
         res = torch.nn.Embedding(_weight = weight, embedding_dim = self.embedding_dim, num_embeddings=self.num_embeddings, dtype=torch.float32, device="cpu")
         return res.to(self.weight.device).bfloat16()
-
-def quantize_model_embs(model: nn.Module):
-    find_and_replace(model, nn.Embedding, lambda emb: QuantEmbedding(emb))
-    
-def dequantize_model_embs(model: nn.Module):
-    find_and_replace(model, nn.Embedding, lambda qemb: qemb.dequantize())

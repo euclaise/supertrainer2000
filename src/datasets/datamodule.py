@@ -3,6 +3,8 @@ import lightning as L
 import datasets
 from typing import Optional
 from typing_extensions import TypedDict
+from torch.utils.data import DataLoader
+from ..config import NUM_PROC
 
 class _DatasetSplits(TypedDict):
     train: str
@@ -20,21 +22,32 @@ class DataModule(L.LightningDataModule):
         self,
         ds_dict: _DatasetDict,
         cache_dir: str,
-        seed: int
+        seed: int,
     ):
-        self._in_init = True
+        self._immutable = False
         super().__init__()
         
         self.ds_dict = ds_dict
         self.cache_dir = cache_dir
         self.seed = seed
-        self._in_init = False
+
+        self._immutable = True
 
     def __str__(self):
         return self.ds_dict.__str__()
 
     def __repr__(self):
         return self.ds_dict.__repr__()
+
+    def init(self, batch_size: int, collate_fn: Callable):
+        self._immutable = False
+        self.batch_size = batch_size
+        self.collate_fn = collate_fn
+        return self
+
+
+    def train_dataloader(self):
+        return DataLoader(self.ds_dict['train'], batch_size=self.batch_size, shuffle=True, collate_fn=self.collate_fn, num_workers=NUM_PROC)
 
     @classmethod
     def from_existing(
@@ -51,7 +64,7 @@ class DataModule(L.LightningDataModule):
         return cls(ds_dict, cache_dir, seed)
 
     def __setattr__(self, name, value):
-        if name == "_in_init" or self._in_init:
+        if name == "_immutable" or not self._immutable:
             super().__setattr__(name, value)
         else:
             raise AttributeError("supertrainer2000 DataModules are immutable. Attempted to modify immutable data.")
@@ -99,3 +112,12 @@ class DataModule(L.LightningDataModule):
                 ds_dict[k] = None
 
         return cls.from_existing(to_concat[0], ds_dict=ds_dict)
+
+
+    def truncate_len(self, max_len):
+        ds_dict = {}
+        for k, v in self.ds_dict.items():
+            if v is not None:
+                ds_dict[k] = v.map(lambda x: {'toks': x['toks'][:max_len]})
+
+        return self.from_existing(self, ds_dict=ds_dict)

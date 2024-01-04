@@ -14,10 +14,6 @@ dm = DataModule.load_hf('euirim/goodwiki', split='train')
 dm = Preprocessors.simple_text(dm, tokenizer, column_name='markdown')
 
 optimizer = AdamW(model.parameters(), lr=learning_rate)
-scheduler = get_linear_schedule_with_warmup(optimizer, 
-                                           num_warmup_steps=0, 
-                                           num_training_steps=num_training_steps)
-
 scheduler = get_hf_scheduler(name='linear')
 
 wrapper = SFTWrapper(

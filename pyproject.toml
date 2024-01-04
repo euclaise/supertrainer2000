@@ -3,7 +3,7 @@ name = "supertrainer2000"
 version = "0.1.0"
 description = ""
 authors = ["Jade <jpritsk@purdue.edu>"]
-license = "MIT"
+license = "0BSD"
 readme = "README.md"
 
 [tool.poetry.dependencies]

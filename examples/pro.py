@@ -1,4 +1,4 @@
-from supertrainer2k.datasets import DataModule, Preprocessors, DataCollator
+from supertrainer2k.datasets import DataModule, Preprocessor, DataCollator
 from supertrainer2k.wrappers import PROWrapper
 from supertrainer2k.utils import get_hf_scheduler
 
@@ -25,7 +25,7 @@ def apply_template(row):
 dm = dm.map(apply_template)
 
 
-dm = Preprocessors.multi_choice_text(dm, tokenizer, tokenizer_kwargs = {'truncation': True, 'max_length': 128})
+dm = Preprocessor.multi_choice_text(dm, tokenizer, tokenizer_kwargs = {'truncation': True, 'max_length': 128})
 dm.init(batch_size = 1, collate_fn = DataCollator.MultiChoice())
 
 model = PROWrapper(

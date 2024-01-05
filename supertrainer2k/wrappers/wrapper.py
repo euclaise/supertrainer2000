@@ -9,7 +9,6 @@ from torch.distributed.optim.apply_optimizer_in_backward import _apply_optimizer
 class _Wrapper(L.LightningModule):
     def __init__(self,
         model: transformers.PreTrainedModel,
-        batch_size: int,
         optimizer: Optimizer,
         scheduler: Callable,
         lr: float,

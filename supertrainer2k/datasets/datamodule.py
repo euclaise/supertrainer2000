@@ -148,7 +148,10 @@ class DataModule(L.LightningDataModule):
 
 
     def truncate_toks(self, max_len):
-        return self.map(lambda ds: {'toks': ds['toks'][:max_len]})
+        return self.map(lambda ds: {
+            'input_ids': ds['input_ids'][:max_len],
+            'labels': ds['labels'][:max_len]
+        })
 
     def filter(self, filter_fn: Callable):
         if isinstance(self.ds_dict['train'], datasets.IterableDataset):

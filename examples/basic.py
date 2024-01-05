@@ -1,4 +1,4 @@
-from supertrainer2k.datasets import DataModule, Preprocessors, DataCollator
+from supertrainer2k.datasets import DataModule, Preprocessor, DataCollator
 from supertrainer2k.wrappers import SFTWrapper
 from supertrainer2k.optim import get_hf_scheduler, Adalite
 
@@ -12,15 +12,16 @@ model_name = "tiiuae/falcon-rw-1b"
 model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
+# supertrainer2000 supports streaming, making it much easier to handle massive datasets
 dm = DataModule.load_hf('JeanKaddour/minipile', split='train', streaming=True)
-dm = Preprocessors.simple_text(dm, tokenizer, column_name='text', max_length=256)
+
+dm = Preprocessor.simple_text(dm, tokenizer, column_name='text', max_length=256)
 dm.init(batch_size = 3, collate_fn = DataCollator.Causal())
 
 model = SFTWrapper(
     model=model,
     optimizer=Adalite,
     scheduler=get_hf_scheduler(name='linear'),
-    batch_size=1,
     lr=1e-5
     #adalite_backward = True # Fuse optimizer step with backward pass
 )

@@ -11,17 +11,18 @@ class DataCollator:
             self.pad_id = pad_id
 
         def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
-            toks = [d['toks'] for d in instances]
+            ids = [d['input_ids'] for d in instances]
+            labels = [d['labels'] for d in instances]
 
-            max_seq_len = max(len(x) for x in toks)
+            max_seq_len = max(len(x) for x in ids)
 
-            input_ids = [torch.tensor([self.pad_id]*(max_seq_len - len(x)) + x, dtype=torch.long) for x in toks]
+            input_ids = [torch.tensor([self.pad_id]*(max_seq_len - len(x)) + x, dtype=torch.long) for x in ids]
             input_ids = torch.stack(input_ids)
             
-            labels = [torch.tensor([-100]*(max_seq_len - len(x)) + x, dtype=torch.long) for x in toks]
+            labels = [torch.tensor([-100]*(max_seq_len - len(x)) + x, dtype=torch.long) for x in labels]
             labels = torch.stack(labels)
 
-            attention_mask = [torch.tensor([False]*(max_seq_len - len(x)) + [True]*len(x), dtype=torch.bool) for x in toks]
+            attention_mask = [torch.tensor([False]*(max_seq_len - len(x)) + [True]*len(x), dtype=torch.bool) for x in ids]
             attention_mask = torch.stack(attention_mask)
 
             return dict(
@@ -35,21 +36,22 @@ class DataCollator:
             self.pad_id = pad_id
             
         def __call__(self, batch):
-            bsz = len(batch)
-            seqs = [[x['toks_chosen']] + x['toks_rejected'] for x in batch]
-        
-            max_toks = max(max(len(y) for y in x) for x in seqs)
-            max_seqs = max(len(x) for x in seqs)
-                        
-            input_ids = torch.ones((len(seqs), max_seqs, max_toks), dtype=torch.long) * self.pad_id
-            labels = torch.ones((len(seqs), max_seqs, max_toks), dtype=torch.long) * -100
-            mask = torch.zeros((len(seqs), max_seqs), dtype=torch.bool)
+            ids = [[x['chosen']['input_ids']] + x['rejected']['input_ids'] for x in batch]
+            labs = [[x['chosen']['labels']] + x['rejected']['labels'] for x in batch]
 
-            for b, q in enumerate(seqs):
+        
+            max_toks = max(max(len(y) for y in x) for x in ids)
+            max_seqs = max(len(x) for x in ids)
+                        
+            input_ids = torch.ones((len(ids), max_seqs, max_toks), dtype=torch.long) * self.pad_id
+            labels = torch.ones((len(labs), max_seqs, max_toks), dtype=torch.long) * -100
+            mask = torch.zeros((len(ids), max_seqs), dtype=torch.bool)
+
+            for b, q in enumerate(ids):
                 for s, seq in enumerate(q):
                     for t, tok in enumerate(seq):
                         input_ids[b, s, t] = tok
-                        labels[b, s, t] = tok
+                        labels[b, s, t] = labs[b][s][t]
                     mask[b, s] = 1
 
             return {

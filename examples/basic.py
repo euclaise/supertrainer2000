@@ -1,6 +1,6 @@
 from supertrainer2k.datasets import DataModule, Preprocessors, DataCollator
 from supertrainer2k.wrappers import SFTWrapper
-from supertrainer2k.optim import get_hf_scheduler
+from supertrainer2k.optim import get_hf_scheduler, Adalite
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
@@ -13,8 +13,7 @@ model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloa
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 dm = DataModule.load_hf('JeanKaddour/minipile', split='train', streaming=True)
-dm = Preprocessors.simple_text(dm, tokenizer, column_name='text')
-dm = dm.truncate_toks(256)
+dm = Preprocessors.simple_text(dm, tokenizer, column_name='text', max_length=256)
 dm.init(batch_size = 3, collate_fn = DataCollator.Causal())
 
 model = SFTWrapper(

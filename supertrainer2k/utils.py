@@ -1,8 +1,7 @@
 import torch
 from typing import Callable, Type, TypeVar, Dict
-from transformers import get_scheduler, PreTrainedTokenizer
+from transformers import get_scheduler
 import torch
-from collections.abc import Sequence
 
 TorchModule = TypeVar('TorchModule', bound=torch.nn.Module)
 
@@ -34,30 +33,3 @@ def get_hf_scheduler(
         )
 
     return scheduler_fn
-
-
-class DataCollatorForCausal:
-    tokenizer: PreTrainedTokenizer
-
-    def __init__(self, pad_id=0):
-        self.pad_id = pad_id
-
-    def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
-        toks = [d['toks'] for d in instances]
-
-        max_seq_len = max(len(x) for x in toks)
-
-        input_ids = [torch.tensor([self.pad_id]*(max_seq_len - len(x)) + x, dtype=torch.long) for x in toks]
-        input_ids = torch.stack(input_ids)
-        
-        labels = [torch.tensor([-100]*(max_seq_len - len(x)) + x, dtype=torch.long) for x in toks]
-        labels = torch.stack(labels)
-
-        attention_mask = [torch.tensor([False]*(max_seq_len - len(x)) + [True]*len(x), dtype=torch.bool) for x in toks]
-        attention_mask = torch.stack(attention_mask)
-
-        return dict(
-            input_ids=input_ids,
-            labels=labels,
-            attention_mask=attention_mask
-        )

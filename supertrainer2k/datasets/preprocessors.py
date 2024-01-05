@@ -11,20 +11,23 @@ class Preprocessors:
         tokenizer: PreTrainedTokenizer,
         column_name: str ='text',
         tokenizer_args: Sequence = [],
-        tokenizer_kwargs: Dict = {},
-        *args,
-        **kwargs
+        tokenizer_kwargs: Dict = {}
     ):
-        ds_dict = {}
-        for k, v in datamodule.ds_dict.items():
-            if v is not None:
-                ds_dict[k] = v.map(
-                    lambda x: {'toks': tokenizer.encode(x[column_name], *tokenizer_args, **tokenizer_kwargs)},
-                    remove_columns=v.column_names,
-                    num_proc = NUM_PROC,
-                    *args, **kwargs
-                )
-            else:
-                ds_dict[k] = None
-
-        return DataModule.from_existing(datamodule, ds_dict=ds_dict)
+        return datamodule.map(
+            lambda x: {'toks': tokenizer.encode(x[column_name], *tokenizer_args, **tokenizer_kwargs)},
+        )
+        
+    @staticmethod
+    def multi_choice_text(
+        datamodule: DataModule,
+        tokenizer: PreTrainedTokenizer,
+        column_names: Sequence[str, str] = ('chosen', 'rejected'),
+        tokenizer_args: Sequence = [],
+        tokenizer_kwargs: Dict = {}
+    ):
+        return datamodule.map(
+            lambda x: {
+                'toks_chosen': tokenizer.encode(x[column_names[0]], *tokenizer_args, **tokenizer_kwargs),
+                'toks_rejected': tokenizer(x[column_names[1]], *tokenizer_args, **tokenizer_kwargs).input_ids
+            }
+        )

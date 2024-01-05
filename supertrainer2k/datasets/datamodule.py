@@ -1,7 +1,7 @@
 from __future__ import annotations
 import lightning as L
 import datasets
-from typing import Optional
+from typing import Optional, Callable
 from typing_extensions import TypedDict
 from torch.utils.data import DataLoader
 from ..config import NUM_PROC
@@ -113,11 +113,26 @@ class DataModule(L.LightningDataModule):
 
         return cls.from_existing(to_concat[0], ds_dict=ds_dict)
 
-
     def truncate_len(self, max_len):
         ds_dict = {}
         for k, v in self.ds_dict.items():
             if v is not None:
                 ds_dict[k] = v.map(lambda x: {'toks': x['toks'][:max_len]}, num_proc=NUM_PROC)
+
+        return self.from_existing(self, ds_dict=ds_dict)
+
+    def map(self, map_fn: Callable):
+        ds_dict = {}
+        for k, v in self.ds_dict.items():
+            if v is not None:
+                ds_dict[k] = v.map(map_fn, num_proc=NUM_PROC, remove_columns=v.column_names)
+
+        return self.from_existing(self, ds_dict=ds_dict)
+
+    def filter(self, filter_fn: Callable):
+        ds_dict = {}
+        for k, v in self.ds_dict.items():
+            if v is not None:
+                ds_dict[k] = v.filter(filter_fn, num_proc=NUM_PROC)
 
         return self.from_existing(self, ds_dict=ds_dict)

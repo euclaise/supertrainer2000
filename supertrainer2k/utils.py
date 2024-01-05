@@ -1,6 +1,6 @@
 import torch
-from typing import Callable, Type, TypeVar, Dict
-import torch
+from typing import Callable, Type, TypeVar, Dict, Any, Optional, Union
+from lightning.pytorch.strategies import Strategy
 
 TorchModule = TypeVar('TorchModule', bound=torch.nn.Module)
 
@@ -8,14 +8,15 @@ def patch_model(
     model: torch.nn.Module,
     to_replace: Type[TorchModule],
     patch_fn: Callable[[TorchModule], TorchModule],
-    name_constriants: Callable[[str], bool] = lambda x: True
+    name_constraints: Callable[[str], bool] = lambda x: True
 ):
     """Replaces all `to_replace` submodules which meet `name_constraints` with `replace_fn(submodule)`"""
-    for name, submodule in module.named_children():
+    for name, submodule in model.named_children():
         if isinstance(submodule, to_replace) and name_constraints(name):
-            setattr(module, name, patch_fn(submodule))
+            setattr(model, name, patch_fn(submodule))
         else:
-            patch_model(submodule, replacement)
+            patch_model(submodule, to_replace, patch_fn, name_constraints)
+
 
 class DummyStrategy(Strategy): # Dummy strategy to keep HF's device placement                                                                                                                                                                         
     def __init__(self, *args, **kwargs):
@@ -29,7 +30,7 @@ class DummyStrategy(Strategy): # Dummy strategy to keep HF's device placement
         device = self.model.device if self.model else (device or self.root_device)
         return move_data_to_device(batch, device)
 
-    def all_gather(self, tensor: Tensor, group: Optional[Any] = None, sync_grads: bool = False) -> Tensor:
+    def all_gather(self, tensor: torch.Tensor, group: Optional[Any] = None, sync_grads: bool = False) -> torch.Tensor:
         pass
 
     def barrier(self, name: Optional[str] = None) -> None:
@@ -44,10 +45,10 @@ class DummyStrategy(Strategy): # Dummy strategy to keep HF's device placement
 
     def reduce(
         self,
-        tensor: Union[Tensor, Any],
+        tensor: Union[torch.Tensor, Any],
         group: Optional[Any] = None,
         reduce_op = "mean",
-    ) -> Union[Tensor, Any]:
+    ) -> Union[torch.Tensor, Any]:
         return tensor
 
     @property

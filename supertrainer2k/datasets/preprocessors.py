@@ -82,13 +82,12 @@ class Preprocessor:
             for msg in row[column_name]:
                 toks = tokenizer.encode(msg[msg_keys[0]], **tokenizer_kwargs)
                 input_ids += toks
-                match msg[msg_keys[1]]:
-                    case role_names[0]:
-                        labels += [-100]*len(toks)
-                    case role_names[1]:
-                        labels += toks
-                    case other:
-                        raise ValueError(f"Unknown role name, {msg[msg_keys[1]]}")
+                if msg[msg_keys[1]] ==  role_names[0]:
+                    labels += [-100]*len(toks)
+                elif msg[msg_keys[1]] == role_names[1]:
+                    labels += toks
+                else:
+                    raise ValueError(f"Unknown role name, {msg[msg_keys[1]]}")
 
             return {
                 'input_ids': input_ids[:max_length],

@@ -118,6 +118,6 @@ class DataModule(L.LightningDataModule):
         ds_dict = {}
         for k, v in self.ds_dict.items():
             if v is not None:
-                ds_dict[k] = v.map(lambda x: {'toks': x['toks'][:max_len]})
+                ds_dict[k] = v.map(lambda x: {'toks': x['toks'][:max_len]}, num_proc=NUM_PROC)
 
         return self.from_existing(self, ds_dict=ds_dict)

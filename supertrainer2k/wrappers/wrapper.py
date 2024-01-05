@@ -11,14 +11,16 @@ class _Wrapper(L.LightningModule):
         batch_size: int,
         optimizer: Optimizer,
         scheduler: Callable,
+        lr: float,
         scheduler_config: Optional[Dict] = None,
-        optim_params: Optional[Dict] = {}
+        optimizer_params: Optional[Dict] = {}
     ):
         super().__init__()
         self.model = model
-        self.optimizer = optimizer
+        self.optimizer_cls = optimizer
         self.scheduler = scheduler
-        self.optim_params = optim_params
+        self.optimizer_params = optimizer_params
+        self.lr = lr
 
         if scheduler_config is not None:
             self.scheduler_config = scheduler_config
@@ -29,6 +31,7 @@ class _Wrapper(L.LightningModule):
             }
     
     def configure_optimizers(self):
+        self.optimizer = self.optimizer_cls(self.model.parameters(), lr=self.lr, **self.optimizer_params)
         scheduler = self.scheduler_config
         total_steps = self.trainer.estimated_stepping_batches if scheduler['interval'] == 'step' else self.trainer.max_epochs
 

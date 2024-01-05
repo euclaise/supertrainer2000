@@ -33,6 +33,7 @@ class _Wrapper(L.LightningModule):
     def configure_optimizers(self):
         self.optimizer = self.optimizer_cls(self.model.parameters(), lr=self.lr, **self.optimizer_params)
         scheduler = self.scheduler_config
+
         total_steps = self.trainer.estimated_stepping_batches if scheduler['interval'] == 'step' else self.trainer.max_epochs
 
         scheduler['scheduler'] = self.scheduler(self.optimizer, total_steps=total_steps)

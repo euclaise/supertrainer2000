@@ -3,7 +3,7 @@ import lightning as L
 import datasets
 from typing import Optional, Callable, Union
 from typing_extensions import TypedDict
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, IterableDataset
 from ..config import NUM_PROC
 import warnings
 
@@ -17,6 +17,7 @@ class _DatasetDict(TypedDict):
     train: Union[datasets.Dataset, datasets.IterableDataset]
     test: Optional[Union[datasets.Dataset, datasets.IterableDataset]]
     validation: Optional[Union[datasets.Dataset, datasets.IterableDataset]]
+
 
 class DataModule(L.LightningDataModule):
     def __init__(
@@ -52,7 +53,7 @@ class DataModule(L.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=not self.streaming,
             collate_fn=self.collate_fn,
-            num_workers=NUM_PROC
+            num_workers=NUM_PROC if not self.streaming or self.ds_dict['train'].n_shards >= NUM_PROC else 1
         )
 
     @classmethod
@@ -102,8 +103,6 @@ class DataModule(L.LightningDataModule):
                 'test': None,
                 'validation': None
             }
-        seed = seed
-        streaming = streaming
 
         return cls(ds_dict, seed, streaming)
 

@@ -25,7 +25,7 @@ def apply_template(row):
 dm = dm.map(apply_template)
 
 
-dm = Preprocessor.multi_choice_text(dm, tokenizer, tokenizer_kwargs = {'truncation': True, 'max_length': 128})
+dm = Preprocessor.multi_choice_text(dm, tokenizer, max_length=128)
 dm.init(batch_size = 1, collate_fn = DataCollator.MultiChoice())
 
 model = PROWrapper(

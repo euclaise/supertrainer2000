@@ -1,10 +1,11 @@
 from __future__ import annotations
 import lightning as L
 import datasets
-from typing import Optional, Callable
+from typing import Optional, Callable, Union
 from typing_extensions import TypedDict
 from torch.utils.data import DataLoader
 from ..config import NUM_PROC
+import warnings
 
 class _DatasetSplits(TypedDict):
     train: str
@@ -13,23 +14,23 @@ class _DatasetSplits(TypedDict):
 
 
 class _DatasetDict(TypedDict):
-    train: datasets.Dataset
-    test: Optional[datasets.Dataset]
-    validation: Optional[datasets.Dataset]
+    train: Union[datasets.Dataset, datasets.IterableDataset]
+    test: Optional[Union[datasets.Dataset, datasets.IterableDataset]]
+    validation: Optional[Union[datasets.Dataset, datasets.IterableDataset]]
 
 class DataModule(L.LightningDataModule):
     def __init__(
         self,
         ds_dict: _DatasetDict,
-        cache_dir: str,
         seed: int,
+        streaming: bool
     ):
         self._immutable = False
         super().__init__()
         
         self.ds_dict = ds_dict
-        self.cache_dir = cache_dir
         self.seed = seed
+        self.streaming = streaming
 
         self._immutable = True
 
@@ -45,23 +46,28 @@ class DataModule(L.LightningDataModule):
         self.collate_fn = collate_fn
         return self
 
-
     def train_dataloader(self):
-        return DataLoader(self.ds_dict['train'], batch_size=self.batch_size, shuffle=True, collate_fn=self.collate_fn, num_workers=NUM_PROC)
+        return DataLoader(
+            self.ds_dict['train'],
+            batch_size=self.batch_size,
+            shuffle=not self.streaming,
+            collate_fn=self.collate_fn,
+            num_workers=NUM_PROC
+        )
 
     @classmethod
     def from_existing(
         cls,
         existing: DataModule,
         ds_dict: Optional[DatasetDict] = None,
-        cache_dir: Optional[str] = None,
         seed: Optional[int] = None,
+        streaming: Optional[bool] = None
     ):
         ds_dict = ds_dict if ds_dict is not None else existing.ds_dict
-        cache_dir = cache_dir if cache_dir is not None else existing.cache_dir
         seed = seed if seed is not None else existing.seed
+        streaming = streaming if streaming is not None else existing.streaming
 
-        return cls(ds_dict, cache_dir, seed)
+        return cls(ds_dict, seed, streaming)
 
     def __setattr__(self, name, value):
         if name == "_immutable" or not self._immutable:
@@ -74,15 +80,15 @@ class DataModule(L.LightningDataModule):
         cls,
         dataset: str,
         splits: DatasetSplits = {'train': 'train', 'test': None, 'validation': None},
-        cache_dir: str = "./ds_cache",
         seed: int = 42,
+        streaming: bool = False,
         *args,
         **kwargs
     ):
         if dataset.startswith(('/', './')):
-            ds = datasets.load_from_disk(dataset, *args, **kwargs)
+            ds = datasets.load_from_disk(dataset, streaming=streaming, *args, **kwargs)
         else:
-            ds = datasets.load_dataset(dataset, *args, **kwargs)
+            ds = datasets.load_dataset(dataset, streaming=streaming, *args, **kwargs)
 
         if isinstance(ds, datasets.DatasetDict):
             ds_dict = {
@@ -96,10 +102,10 @@ class DataModule(L.LightningDataModule):
                 'test': None,
                 'validation': None
             }
-        cache_dir = cache_dir
         seed = seed
+        streaming = streaming
 
-        return cls(ds_dict, cache_dir, seed)
+        return cls(ds_dict, seed, streaming)
 
     @classmethod
     def concatenate(cls, to_concat):
@@ -113,26 +119,30 @@ class DataModule(L.LightningDataModule):
 
         return cls.from_existing(to_concat[0], ds_dict=ds_dict)
 
-    def truncate_len(self, max_len):
+
+    def do_all(self, fn: Callable):
         ds_dict = {}
         for k, v in self.ds_dict.items():
             if v is not None:
-                ds_dict[k] = v.map(lambda x: {'toks': x['toks'][:max_len]}, num_proc=NUM_PROC)
+                ds_dict[k] = fn(v)
 
         return self.from_existing(self, ds_dict=ds_dict)
 
     def map(self, map_fn: Callable):
-        ds_dict = {}
-        for k, v in self.ds_dict.items():
-            if v is not None:
-                ds_dict[k] = v.map(map_fn, num_proc=NUM_PROC, remove_columns=v.column_names)
+        if isinstance(self.ds_dict['train'], datasets.IterableDataset):
+            return self.do_all(lambda ds: ds.map(map_fn, remove_columns=ds.column_names))
+        return self.do_all(lambda ds: ds.map(map_fn, num_proc=NUM_PROC, remove_columns=ds.column_names))
 
-        return self.from_existing(self, ds_dict=ds_dict)
+
+    def truncate_toks(self, max_len):
+        return self.map(lambda ds: {'toks': ds['toks'][:max_len]})
 
     def filter(self, filter_fn: Callable):
-        ds_dict = {}
-        for k, v in self.ds_dict.items():
-            if v is not None:
-                ds_dict[k] = v.filter(filter_fn, num_proc=NUM_PROC)
+        if isinstance(self.ds_dict['train'], datasets.IterableDataset):
+            return self.do_all(lambda ds: ds.filter(filter_fn))
+        return self.do_all(lambda ds: ds.filter(filter_fn, num_proc=NUM_PROC))
 
-        return self.from_existing(self, ds_dict=ds_dict)
+    def shuffle(self):
+        if self.streaming:
+            warnings.warn("Streamed datasets cannot be fully shuffled -- performing a pseudo-shuffle instead.")
+        return self.do_all(lambda ds: ds.shuffle(seed=self.seed))

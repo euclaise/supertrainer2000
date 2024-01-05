@@ -108,11 +108,25 @@ class DataModule(L.LightningDataModule):
 
     @classmethod
     def concatenate(cls, to_concat):
+        if self.streaming:
+            raise ValueError('Cannot concatenate streamed datamodules, use datamodule.interleave instead')
         ds_dict = {}
         
         for k in ['train', 'test', 'validation']:
             if to_concat[0].ds_dict[k] is not Null:
                 ds_dict[k] = datasets.concatenate_datasets([d.ds_dict[k] for d in to_concat]).shuffle(seed=self.seed)
+            else:
+                ds_dict[k] = None
+
+        return cls.from_existing(to_concat[0], ds_dict=ds_dict)
+
+    @classmethod
+    def interleave(cls, to_concat: List, probabilities: List[float]):
+        ds_dict = {}
+        
+        for k in ['train', 'test', 'validation']:
+            if to_concat[0].ds_dict[k] is not Null:
+                ds_dict[k] = datasets.interleave_datasets([d.ds_dict[k] for d in to_concat], probabilities=probabilities, seed=self.seed).shuffle(seed=self.seed)
             else:
                 ds_dict[k] = None
 

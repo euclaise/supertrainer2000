@@ -1,11 +1,9 @@
 from supertrainer2k.datasets import DataModule, Preprocessors, DataCollator
 from supertrainer2k.wrappers import SFTWrapper
-from supertrainer2k.utils import get_hf_scheduler
+from supertrainer2k.optim import get_hf_scheduler
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
-
-from torch.optim import AdamW
 
 from lightning import Trainer
 from lightning.pytorch.tuner import Tuner
@@ -21,10 +19,11 @@ dm.init(batch_size = 3, collate_fn = DataCollator.Causal())
 
 model = SFTWrapper(
     model=model,
-    optimizer=AdamW,
+    optimizer=Adalite,
     scheduler=get_hf_scheduler(name='linear'),
     batch_size=1,
     lr=1e-5
+    #adalite_backward = True # Fuse optimizer step with backward pass
 )
 
 trainer = Trainer(max_epochs=1, accelerator="gpu", devices=1)

@@ -63,6 +63,43 @@ class Preprocessor:
         )
 
     @staticmethod
+    def multi_instruction_response(
+        datamodule: DataModule,
+        tokenizer: PreTrainedTokenizer,
+        column_name: str = 'messages',
+        role_names: Sequence[str, str] = ('instruction', 'response'),
+        msg_keys: Sequence[str, str] = ('text', 'role'),
+        max_length: Optional[int] = None,
+        tokenizer_kwargs: Dict = {},
+    ):
+        if 'add_special_tokens' not in tokenizer_kwargs:
+            tokenizer_kwargs['add_special_tokens'] = False
+
+        def map_fn(row):
+            input_ids = []
+            labels = []
+
+            for msg in row[column_name]:
+                toks = tokenizer.encode(msg[msg_keys[0]], **tokenizer_kwargs)
+                input_ids += toks
+                match msg[msg_keys[1]]:
+                    case role_names[0]:
+                        labels += [-100]*len(toks)
+                    case role_names[1]:
+                        labels += toks
+                    case other:
+                        raise ValueError(f"Unknown role name, {msg[msg_keys[1]]}")
+
+            return {
+                'input_ids': input_ids[:max_length],
+                'labels': labels[:max_length],
+            }
+            
+        return datamodule.map(map_fn)
+
+
+        
+    @staticmethod
     def instruction_response(
         datamodule: DataModule,
         tokenizer: PreTrainedTokenizer,
@@ -73,16 +110,13 @@ class Preprocessor:
         if 'add_special_tokens' not in tokenizer_kwargs:
             tokenizer_kwargs['add_special_tokens'] = False
 
-        datamodule = datamodule.map(
-            lambda x: {
-                'instruction': tokenizer.encode(x[column_names[0]], **tokenizer_kwargs),
-                'response': tokenizer.encode(x[column_names[1]], **tokenizer_kwargs)
-            }
-        )
+        def map_fn(row):
+            instruction = tokenizer.encode(x[column_names[0]], **tokenizer_kwargs)
+            response = tokenizer.encode(x[column_names[1]], **tokenizer_kwargs)
 
-        return datamodule.map(
-            lambda x: {
-                'input_ids': (x['instruction'] + x['response'])[:max_length],
-                'labels': ([-100]*len(x['instruction']) + x['response'])[:max_length]
+            return {
+                'input_ids': (instruction + response)[:max_length],
+                'labels': ([-100]*len(instruction) + response)[:max_length]
             }
-        )
+            
+        return datamodule.map(map_fn)

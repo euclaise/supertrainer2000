@@ -21,6 +21,10 @@ name = "cu121"
 url = "https://download.pytorch.org/whl/cu121"
 priority = "explicit"
 
+
+[tool.poetry.group.extras.dependencies]
+mosaicml-streaming = "^0.7.2"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

@@ -19,7 +19,7 @@ class _DatasetDict(TypedDict):
     validation: Optional[Union[datasets.Dataset, datasets.IterableDataset]]
 
 
-class DataModule(L.LightningDataModule):
+class StreamingDataModule(L.LightningDataModule):
     def __init__(
         self,
         ds_dict: _DatasetDict,
@@ -87,8 +87,7 @@ class DataModule(L.LightningDataModule):
         **kwargs
     ):
         if dataset.startswith(('/', './')):
-            ds = datasets.load_from_disk(dataset, *args, **kwargs)
-            streaming = False
+            ds = datasets.load_from_disk(dataset, streaming=streaming, *args, **kwargs)
         else:
             ds = datasets.load_dataset(dataset, streaming=streaming, *args, **kwargs)
 

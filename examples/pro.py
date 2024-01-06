@@ -1,4 +1,3 @@
-
 from supertrainer2k.datasets import DataModule, Preprocessor, DataCollator
 from supertrainer2k.wrappers import PROWrapper
 from supertrainer2k.optim import get_hf_scheduler
@@ -26,18 +25,17 @@ def apply_template(row):
 dm = dm.map(apply_template)
 
 
-dm = Preprocessor.multi_choice_text(dm, tokenizer, max_length=128)
+dm = Preprocessor.multi_choice_text(dm, tokenizer, max_length=512)
 dm.init(batch_size = 1, collate_fn = DataCollator.Ranked())
 
 model = PROWrapper(
     model=model,
     optimizer=AdamW,
     scheduler=get_hf_scheduler(name='linear'),
-    lr=1e-5
+    lr=2e-5
 )
 
-trainer = Trainer(max_epochs=1, accelerator="gpu", devices=1)
+trainer = Trainer(max_epochs=1, accelerator="gpu", accumulate_grad_batches=2)
 
 trainer.fit(model, dm)
-
 model.save("model_final")

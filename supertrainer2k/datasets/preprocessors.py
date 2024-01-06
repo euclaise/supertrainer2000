@@ -55,7 +55,35 @@ class Preprocessor:
             return {
                 'input_ids': chosen + rejected,
                 'labels': chosen + rejected,
-                'ranks': [1] + [0]*len(rejected),
+                'ranks': [0] + [1]*len(rejected),
+            }
+
+        return datamodule.map(map_fn)
+
+        
+    @staticmethod
+    def ranked_text(
+        datamodule: DataModule,
+        tokenizer: PreTrainedTokenizer,
+        column_name: str = 'completions',
+        completions_keys: Sequence[str, str] = ('text', 'rank'),
+        max_length: Optional[int] = None,
+        tokenizer_kwargs: Dict = {}
+    ):
+        if 'add_special_tokens' not in tokenizer_kwargs:
+            tokenizer_kwargs['add_special_tokens'] = False
+            
+        if max_length != None:
+            tokenizer_kwargs['max_length'] = max_length
+            tokenizer_kwargs['truncation'] = True
+
+        def map_fn(row):
+            input_ids = [tokenizer.encode(seq[completions_keys[0]], **tokenizer_kwargs) for seq in row[column_name]]
+            ranks = [seq['rank'] for seq in row[column_name]]
+            return {
+                'input_ids': input_ids,
+                'labels': input_ids,
+                'ranks': ranks,
             }
 
         return datamodule.map(map_fn)
@@ -95,7 +123,6 @@ class Preprocessor:
         return datamodule.map(map_fn)
 
 
-        
     @staticmethod
     def instruction_response(
         datamodule: DataModule,

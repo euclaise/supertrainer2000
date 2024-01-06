@@ -5,26 +5,43 @@ from torch.optim.lr_scheduler import _LRScheduler
 import torch.nn.functional as F
 from .wrapper import _Wrapper
 import torch
+import copy
 
 class DPOWrapper(_Wrapper):
     def __init__(self, ref_model: torch.nn.Module, beta: float = 0.1, eps: float = 1.0, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.beta = beta
         self.eps = eps
         self.ref_model = copy.deepcopy(ref_model)
         self.ref_model.eval()
-        super().__init__(*args, **kwargs)
+        for p in self.ref_model.parameters():
+            p.requires_grad = False
+
+        def pairwise_loss(lp_cur_chosen, lp_cur_rejected, lp_ref_chosen, lp_ref_rejected):
+            pol_logratio = lp_cur_chosen - lp_cur_rejected
+            ref_logratio = lp_ref_chosen - lp_ref_rejected
+
+            h = pol_logratio - ref_logratio
+            return -F.logsigmoid(self.beta * h) * (1 - self.eps) - F.logsigmoid(-self.beta * h)*self.eps
+
+        f1 = torch.vmap(pairwise_loss, in_dims=(None, 0, None, 0)) # vmap over multiple rejects
+        
+        def listwise_loss(lp_cur_chosen, lp_ref_chosen, rank_chosen, lps_cur, lps_ref, ranks):
+            valid_comps = (ranks > rank_chosen).float()
+            comps = f1(lp_cur_chosen, lps_cur, lp_ref_chosen, lps_ref) * valid_comps
+            return comps.sum() / valid_comps.sum()
+
+        f2 = torch.vmap(listwise_loss, in_dims=(0, 0, 0, None, None, None))
+        def batchwise_loss(lps_cur, lps_ref, ranks):
+            valid_comps = (ranks != -100).float() * (ranks != -100)
+            comps = f2(lps_cur, lps_ref, ranks, lps_cur, lps_ref, ranks) * valid_comps
+            return comps.sum() / valid_comps.sum()
+
+        batched_loss = torch.vmap(batchwise_loss, in_dims=(0, 0, 0))
+        self.dpo_loss = lambda lps_cur, lps_ref, ranks: batched_loss(lps_cur, lps_ref, ranks).sum() / lps_cur.shape[0]
 
     def forward(self, **inputs):
         return self.model(**inputs)
-
-    def dpo_loss(self, logprobs, ref_logprobs, mask):
-    
-        pol_logratios = logprobs[:, 0].unsqueeze(-1) - logprobs[:, 1:]
-        ref_logratios = reff_logprobs[:, 0].unsqueeze(-1) - ref_logprobs[:, 1:]
-
-        losses = -F.logsigmoid(self.beta * h) * (1 - self.eps) - F.logsigmoid(-self.beta * h)*self.eps
-
-        return losses * mask[:, 1:]
 
     def get_logits(self, model, batch):
         bsz, comps, seq_len = batch['input_ids'].shape
@@ -46,22 +63,20 @@ class DPOWrapper(_Wrapper):
         return logits 
 
     def training_step(self, batch, batch_idx):
+        ranks = batch['ranks']
+        
         lp_cur = self.get_logits(self.model, batch)
+        assert lp_cur.shape == ranks.shape
         with torch.no_grad():
             lp_ref = self.get_logits(self.ref_model, batch)
 
-        mask_sum = batch['mask'].sum()
-
-        if mask_sum == 0:
-            raise ValueError('Batch contains no unmasked sequences')
-        
-        losses = self.dpo_loss(lp_cur, batch['mask']).sum() / mask_sum
+        loss = self.dpo_loss(lp_cur, lp_ref, ranks)
 
         self.log('train/loss', loss)
 
         return loss
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):    
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
         logits = self.get_logits(batch, normalize_length=False)
 
         # Logits is of shape [bsz, comps]

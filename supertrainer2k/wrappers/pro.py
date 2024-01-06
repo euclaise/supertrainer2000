@@ -6,23 +6,38 @@ from .wrapper import _Wrapper
 import torch
 
 class PROWrapper(_Wrapper):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        rank_loss_inner_batched = torch.vmap(self.rank_loss_inner, in_dims=(0, 0, None, None))
+
+        self.rank_loss_batched = torch.vmap(
+            lambda logprobs, ranks: rank_loss_inner_batched(logprobs, ranks, logprobs, ranks),
+            in_dims=(0, 0)
+        )
+
     def forward(self, **inputs):
         return self.model(**inputs)
 
-    def pro_loss(self, logprobs, mask):
-        logprobs = torch.where(mask, logprobs, float('-inf'))
-        logdenom = torch.logsumexp(logprobs, dim=-1)
-        lm_loss = -logprobs[:, 0]
-        rank_loss = -(logprobs[:, 0] - logdenom)
-        return lm_loss, rank_loss
+    @staticmethod
+    def rank_loss_inner(logprob_chosen, rank, logprobs, ranks):
+        logprobs_rejected = torch.where(ranks > rank, logprobs, float('-inf'))
+        logdenom = torch.logsumexp(logprobs_rejected, dim=-1)
+        return -(logprob_chosen - logdenom) * (rank != -100)
 
-    def get_logits(self, batch, normalize_length = True):
+    def lm_loss(self, logits, ranks):
+        max_rank, _ = torch.max(ranks)
+        logits = logits[ranks == max_rank]
+        return logits.mean()
+
+    def get_logits(self, batch):
         bsz, comps, seq_len = batch['input_ids'].shape
         
         flat_input_ids = batch['input_ids'].view(-1, seq_len)[:, :-1]
+        flat_attn_mask = batch['attention_mask'].view(-1, seq_len)[:, :-1]
         flat_labels = batch['labels'].view(-1, seq_len)[:, 1:]
 
-        logits = self.model(input_ids=flat_input_ids).logits.log_softmax(dim=-1)
+        logits = self.model(input_ids=flat_input_ids, attention_mask=flat_attn_mask).logits.log_softmax(dim=-1)
 
         mask = (flat_labels != -100)
         logits = torch.gather(logits, -1, torch.where(mask, flat_labels, 0).unsqueeze(-1)).squeeze(-1) * mask
@@ -31,20 +46,19 @@ class PROWrapper(_Wrapper):
         mask = mask.view(bsz, comps, seq_len - 1)
         mask_sum = mask.sum(dim=-1)
         mask_zeros = mask_sum == 0
-        mask_sum = torch.where(mask_zeros, 1, mask_sum)
 
-        if normalize_length:
-            logits = torch.where(mask_zeros, float('-inf'), logits / mask_sum)
+        logits = torch.where(mask_zeros, float('-inf'), logits / mask_sum)
 
-        return logits 
+        return logits, mask_sum, mask_zeros
 
     def training_step(self, batch, batch_idx):
-        lp_cur = self.get_logits(batch)
-        
-        lm_loss, rank_loss = self.pro_loss(lp_cur, batch['mask'])
-        
-        lm_loss = lm_loss.mean()
-        rank_loss = rank_loss.mean()
+        logits, mask_sum, mask_zeros = self.get_logits(batch)
+        logprobs = torch.where(mask_zeros, float('-inf'), logits / mask_sum)
+    
+        bsz, n_seqs = logprobs.shape
+
+        rank_loss = self.rank_loss_batched(logprobs, batch['ranks']).mean()
+        lm_loss = -logits[batch['ranks'] == 0].mean()
         loss = lm_loss + rank_loss
 
         self.log('train/lm_loss', lm_loss)
@@ -55,8 +69,9 @@ class PROWrapper(_Wrapper):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):    
         logits = self.get_logits(batch, normalize_length=False)
+        ranks = batch['ranks']
 
-        # Logits is of shape [bsz, comps]
-        idxs = torch.argmax(logits)
+        _, idxs = torch.max(logits, dim=-1)
+        correct = ranks[idxs] == 0
 
-        return (idxs == 0).float().mean()
+        return correct.float().mean()

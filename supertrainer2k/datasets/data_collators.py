@@ -30,14 +30,15 @@ class DataCollator:
                 labels=labels,
                 attention_mask=attention_mask
             )
-        
-    class MultiChoice:
+
+    class Ranked:
         def __init__(self, pad_id=0):
             self.pad_id = pad_id
             
         def __call__(self, batch):
-            ids = [[x['chosen']['input_ids']] + x['rejected']['input_ids'] for x in batch]
-            labs = [[x['chosen']['labels']] + x['rejected']['labels'] for x in batch]
+            ids = [x['input_ids'] for x in batch]
+            labs = [x['labels'] for x in batch]
+            rankl = [x['ranks'] for x in batch]
 
         
             max_toks = max(max(len(y) for y in x) for x in ids)
@@ -45,17 +46,20 @@ class DataCollator:
                         
             input_ids = torch.ones((len(ids), max_seqs, max_toks), dtype=torch.long) * self.pad_id
             labels = torch.ones((len(labs), max_seqs, max_toks), dtype=torch.long) * -100
-            mask = torch.zeros((len(ids), max_seqs), dtype=torch.bool)
+            ranks = torch.ones((len(ids), max_seqs), dtype=torch.long) * -100
+            attention_mask = torch.zeros((len(ids), max_seqs, max_toks), dtype=torch.bool)
 
             for b, q in enumerate(ids):
                 for s, seq in enumerate(q):
                     for t, tok in enumerate(seq):
                         input_ids[b, s, t] = tok
                         labels[b, s, t] = labs[b][s][t]
-                    mask[b, s] = 1
+                        attention_mask[b, s, t] = True
+                    ranks[b, s] = rankl[b][s]
 
             return {
                 'input_ids': input_ids,
                 'labels': labels,
-                'mask': mask
+                'ranks': ranks,
+                'attention_mask': attention_mask
             }

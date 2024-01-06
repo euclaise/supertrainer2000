@@ -1,6 +1,6 @@
 
 from supertrainer2k.datasets import DataModule, Preprocessor, DataCollator
-from supertrainer2k.wrappers import PROWrapper
+from supertrainer2k.wrappers import DPOWrapper
 from supertrainer2k.optim import get_hf_scheduler
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -29,11 +29,13 @@ dm = dm.map(apply_template)
 dm = Preprocessor.multi_choice_text(dm, tokenizer, max_length=128)
 dm.init(batch_size = 1, collate_fn = DataCollator.Ranked())
 
-model = PROWrapper(
+model = DPOWrapper(
     model=model,
+    ref_model=model,
     optimizer=AdamW,
     scheduler=get_hf_scheduler(name='linear'),
-    lr=1e-5
+    lr=1e-5,
+    beta=1.0
 )
 
 trainer = Trainer(max_epochs=1, accelerator="gpu", devices=1)

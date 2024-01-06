@@ -48,19 +48,17 @@ class Preprocessor:
             tokenizer_kwargs['max_length'] = max_length
             tokenizer_kwargs['truncation'] = True
 
-        def fn(text, **kwargs):
-            toks = tokenizer.encode(text, **tokenizer_kwargs)
+        def map_fn(row):
+            chosen = [tokenizer.encode(row[column_names[0]], **tokenizer_kwargs)]
+            rejected = [tokenizer.encode(c, **tokenizer_kwargs) for c in row[column_names[1]]]
+
             return {
-                'input_ids': toks,
-                'labels': toks
+                'input_ids': chosen + rejected,
+                'labels': chosen + rejected,
+                'ranks': [1] + [0]*len(rejected),
             }
 
-        return datamodule.map(
-            lambda x: {
-                'chosen': fn(x[column_names[0]]),
-                'rejected': [fn(c) for c in x[column_names[1]]]
-            }
-        )
+        return datamodule.map(map_fn)
 
     @staticmethod
     def multi_instruction_response(

@@ -1,20 +1,21 @@
 import torch
-from typing import Callable, Type, TypeVar, Dict, Any, Optional, Union
+from typing import Callable, Type, TypeVar, Dict, Any, Optional, Union, List
 from lightning.pytorch.strategies import Strategy
 
 TorchModule = TypeVar('TorchModule', bound=torch.nn.Module)
 
 def patch_model(
     model: torch.nn.Module,
-    to_replace: Type[TorchModule],
+    to_replace: List[Type[TorchModule]],
     patch_fn: Callable[[TorchModule], TorchModule],
     name_constraints: Callable[[str], bool] = lambda x: True
 ):
     """Replaces all `to_replace` submodules which meet `name_constraints` with `replace_fn(submodule)`"""
     for name, submodule in model.named_children():
-        if isinstance(submodule, to_replace) and name_constraints(name):
-            setattr(model, name, patch_fn(submodule))
-        else:
+        for r in to_replace:
+            if isinstance(submodule, r) and name_constraints(name):
+                setattr(model, name, patch_fn(submodule))
+                continue
             patch_model(submodule, to_replace, patch_fn, name_constraints)
 
 

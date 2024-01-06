@@ -28,7 +28,14 @@ class QuantEmbedding(nn.Module):
 
         return (self.scales[idx] * (quantized_emb + self.means[idx])).bfloat16()
 
-    def dequantize(self):
+    def unpatch(self):
         weight = (self.weight.to("cpu").float() + self.means.cpu()) * self.scales.cpu()
         res = torch.nn.Embedding(_weight = weight, embedding_dim = self.embedding_dim, num_embeddings=self.num_embeddings, dtype=torch.float32, device="cpu")
         return res.to(self.weight.device).bfloat16()
+
+def apply_quantemb(model, alpha, seq_len):
+    patch_model(model, [nn.Embedding], lambda m: QuantEmbedding(m, alpha, seq_len))
+
+
+def remove_quantemb(model):
+    patch_model(model, [QuantEmbedding], lambda m: m.unpatch())

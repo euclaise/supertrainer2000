@@ -13,7 +13,7 @@ class SFTWrapper(Wrapper):
             self.nan_counter += 1
             self.consecutive_nans += 1
             assert self.consecutive_nans <= self.skip_nans
-            warnings.warn(f"NaNs detected ({self.nan_counter} in training so far). Skipping batch")
+            warnings.warn(f"NaNs or infs detected ({self.nan_counter} in training so far). Skipping batch")
             return None
 
         self.consecutive_nans = 0
@@ -26,7 +26,7 @@ class SFTWrapper(Wrapper):
         try:
             logits, mask = self.get_logits(self.model, batch, normalize_length=False)
         except AssertionError as e:
-            warnings.warn(f"NaNs detected in validation. Skipping batch")
+            warnings.warn(f"NaNs or infs detected in validation. Skipping batch")
             return None
 
         loss = -(logits * mask).sum() / mask.sum()

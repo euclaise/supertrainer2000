@@ -52,7 +52,7 @@ class DPOWrapper(Wrapper):
             self.consecutive_nans += 1
             self.nan_counter += 1
             assert self.consecutive_nans <= self.skip_nans
-            warnings.warn(f"NaNs detected ({self.nan_counter} in training so far). Skipping batch")
+            warnings.warn(f"NaNs or infs detected ({self.nan_counter} in training so far). Skipping batch")
             return None
 
         self.consecutive_nans = 0
@@ -66,10 +66,9 @@ class DPOWrapper(Wrapper):
         try:
             logits, _ = self.get_logits(self.model, batch, normalize_length=False)
         except AssertionError as e:
-            warnings.warn(f"NaNs detected. Skipping batch")
+            warnings.warn(f"NaNs or infs detected. Skipping batch")
             return None
 
-        # Logits is of shape [bsz, comps]
         idxs = torch.argmax(logits)
 
         return (idxs == 0).float().mean()

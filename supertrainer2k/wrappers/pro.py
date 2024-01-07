@@ -14,7 +14,6 @@ class PROWrapper(Wrapper):
             
         def rank_loss_inner(logprob_chosen, rank, logprobs, ranks):
             mask = (ranks > rank)
-            print(logprobs)
 
             all_max = torch.where(mask, logprobs, logprobs.min()).max(dim=-1, keepdim=True)[0]
             all_max = torch.maximum(all_max, logprob_chosen)
@@ -22,7 +21,7 @@ class PROWrapper(Wrapper):
             p_chosen = torch.exp(logprob_chosen - all_max)
 
             if self.use_average:
-                denom = p_chosen + (all_exp.sum(dim=-1) / mask.sum(dim=-1))
+                denom = p_chosen + (all_exp.sum(dim=-1) / (mask.sum(dim=-1) + (mask.sum(dim=-1) == 0)))
             else:
                 denom = p_chosen + all_exp.sum(dim=-1)
 
@@ -32,8 +31,9 @@ class PROWrapper(Wrapper):
 
         def rank_loss_batch(logprobs, ranks, mask):
             valid = mask * (ranks != -100) * (ranks != torch.max(ranks))
+            losses = rank_loss_inner_batched(logprobs, ranks, logprobs, ranks)
             
-            return torch.where(valid, rank_loss_inner_batched(logprobs, ranks, logprobs, ranks), 0).sum() / valid.sum()
+            return (valid*losses).sum() / valid.sum()
 
         self.rank_loss_batched = torch.vmap(rank_loss_batch, in_dims=(0, 0, 0))
 
@@ -45,15 +45,17 @@ class PROWrapper(Wrapper):
             self.nan_counter += 1
             self.consecutive_nans += 1
             assert self.consecutive_nans <= self.skip_nans
-            warnings.warn(f"NaNs detected ({self.nan_counter} in training so far). Skipping batch.")
+            warnings.warn(f"NaNs or infs detected ({self.nan_counter} in training so far). Skipping batch.")
             return None
         self.consecutive_nans = 0
         bsz, n_seqs = logprobs.shape
     
-        rank_loss = self.rank_loss_batched(torch.where(logprobs != 0, logprobs, 1e-6), ranks, mask).mean()
+        rank_loss = self.rank_loss_batched(logprobs, ranks, mask).mean()
         assert not torch.isinf(rank_loss) and not torch.isnan(rank_loss), rank_loss
+        
         lm_loss = -(logprobs[ranks == 0] * mask[ranks == 0]).sum() / mask[ranks == 0].sum()
         assert not torch.isinf(lm_loss) and not torch.isnan(lm_loss), lm_loss
+        
         loss = lm_loss + rank_loss
 
         self.log('train/lm_loss', lm_loss)
@@ -66,7 +68,7 @@ class PROWrapper(Wrapper):
         try:   
             logits, mask = self.get_logits(self.model, batch, normalize_length=False)
         except AssertionError as e:
-            warnings.warn(f"NaNs detected in validation. Skipping batch.")
+            warnings.warn(f"NaNs or infs detected in validation. Skipping batch.")
             return None
         ranks = batch['ranks']
         logits[ranks == -100] = float('-inf')

@@ -16,7 +16,7 @@ class PROWrapper(Wrapper):
             all_max = torch.where(mask, logprobs, logprobs.min()).max(dim=-1, keepdim=True)[0]
             all_max = torch.maximum(all_max, logprob_chosen)
             all_exp = torch.exp(logprobs - all_max) * mask
-            p_chosen = torch.exp(logprob_chosen)
+            p_chosen = torch.exp(logprob_chosen - all_max)
             
             return -(torch.log(p_chosen /(p_chosen + all_exp[1:].sum(dim=-1))))
         

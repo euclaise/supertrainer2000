@@ -14,6 +14,7 @@ class PROWrapper(Wrapper):
             
         def rank_loss_inner(logprob_chosen, rank, logprobs, ranks):
             mask = (ranks > rank)
+            print(logprobs)
 
             all_max = torch.where(mask, logprobs, logprobs.min()).max(dim=-1, keepdim=True)[0]
             all_max = torch.maximum(all_max, logprob_chosen)
@@ -25,7 +26,7 @@ class PROWrapper(Wrapper):
             else:
                 denom = p_chosen + all_exp.sum(dim=-1)
 
-            return -torch.where(mask.sum(dim=-1) > 0, torch.log(p_chosen / denom), 0)
+            return -torch.log(p_chosen / denom)
         
         rank_loss_inner_batched = torch.vmap(rank_loss_inner, in_dims=(0, 0, None, None))
 
@@ -49,7 +50,7 @@ class PROWrapper(Wrapper):
         self.consecutive_nans = 0
         bsz, n_seqs = logprobs.shape
     
-        rank_loss = self.rank_loss_batched(torch.where(logprobs == 0, logprobs, 1e-6), ranks, mask).mean()
+        rank_loss = self.rank_loss_batched(torch.where(logprobs != 0, logprobs, 1e-6), ranks, mask).mean()
         assert not torch.isinf(rank_loss) and not torch.isnan(rank_loss), rank_loss
         lm_loss = -(logprobs[ranks == 0] * mask[ranks == 0]).sum() / mask[ranks == 0].sum()
         assert not torch.isinf(lm_loss) and not torch.isnan(lm_loss), lm_loss

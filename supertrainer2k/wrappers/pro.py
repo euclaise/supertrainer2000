@@ -17,8 +17,9 @@ class PROWrapper(Wrapper):
             all_max = torch.maximum(all_max, logprob_chosen)
             all_exp = torch.exp(logprobs - all_max) * mask
             p_chosen = torch.exp(logprob_chosen - all_max)
+            denom = p_chosen + all_exp.sum(dim=-1)
             
-            return -(torch.log(p_chosen /(p_chosen + all_exp[1:].sum(dim=-1))))
+            return -(torch.log(p_chosen / denom))
         
         rank_loss_inner_batched = torch.vmap(rank_loss_inner, in_dims=(0, 0, None, None))
 

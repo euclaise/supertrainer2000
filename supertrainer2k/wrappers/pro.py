@@ -50,11 +50,8 @@ class PROWrapper(Wrapper):
         self.consecutive_nans = 0
         bsz, n_seqs = logprobs.shape
     
-        rank_loss = self.rank_loss_batched(logprobs, ranks, mask).mean()
-        assert not torch.isinf(rank_loss) and not torch.isnan(rank_loss), rank_loss
-        
+        rank_loss = self.rank_loss_batched(logprobs, ranks, mask).mean()        
         lm_loss = -(logprobs[ranks == 0] * mask[ranks == 0]).sum() / mask[ranks == 0].sum()
-        assert not torch.isinf(lm_loss) and not torch.isnan(lm_loss), lm_loss
         
         loss = lm_loss + rank_loss
 

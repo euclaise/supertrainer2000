@@ -3,11 +3,12 @@ import transformers
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 import torch.nn.functional as F
-from .wrapper import _Wrapper
+from .wrapper import Wrapper
 import torch
 import copy
+import warnings
 
-class DPOWrapper(_Wrapper):
+class DPOWrapper(Wrapper):
     def __init__(self, ref_model: torch.nn.Module, beta: float = 0.1, eps: float = 1.0, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.beta = beta
@@ -40,36 +41,21 @@ class DPOWrapper(_Wrapper):
         batched_loss = torch.vmap(batchwise_loss, in_dims=(0, 0, 0))
         self.dpo_loss = lambda lps_cur, lps_ref, ranks: batched_loss(lps_cur, lps_ref, ranks).sum() / lps_cur.shape[0]
 
-    def forward(self, **inputs):
-        return self.model(**inputs)
-
-    def get_logits(self, model, batch):
-        bsz, comps, seq_len = batch['input_ids'].shape
-        
-        flat_input_ids = batch['input_ids'].view(-1, seq_len)[:, :-1]
-        flat_labels = batch['labels'].view(-1, seq_len)[:, 1:]
-
-        logits = model(input_ids=flat_input_ids).logits.log_softmax(dim=-1)
-
-        mask = (flat_labels != -100)
-        logits = torch.gather(logits, -1, torch.where(mask, flat_labels, 0).unsqueeze(-1)).squeeze(-1) * mask
-        logits = logits.view(bsz, comps, seq_len - 1).sum(dim=-1)
-        
-        mask = mask.view(bsz, comps, seq_len - 1)
-        mask_sum = mask.sum(dim=-1)
-        mask_zeros = mask_sum == 0
-        mask_sum = torch.where(mask_zeros, 1, mask_sum)
-
-        return logits 
-
     def training_step(self, batch, batch_idx):
         ranks = batch['ranks']
-        
-        lp_cur = self.get_logits(self.model, batch)
-        assert lp_cur.shape == ranks.shape
-        with torch.no_grad():
-            lp_ref = self.get_logits(self.ref_model, batch)
 
+        try:
+            lp_cur, _ = self.get_logits(self.model, batch)
+            with torch.no_grad():
+                lp_ref = self.get_logits(self.ref_model, batch)
+        except AssertionError as e:
+            self.consecutive_nans += 1
+            self.nan_counter += 1
+            assert self.consecutive_nans <= self.skip_nans
+            warnings.warn(f"NaNs detected ({self.nan_counter} in training so far). Skipping batch")
+            return None
+
+        self.consecutive_nans = 0
         loss = self.dpo_loss(lp_cur, lp_ref, ranks)
 
         self.log('train/loss', loss)
@@ -77,7 +63,11 @@ class DPOWrapper(_Wrapper):
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        logits = self.get_logits(batch, normalize_length=False)
+        try:
+            logits, _ = self.get_logits(self.model, batch, normalize_length=False)
+        except AssertionError as e:
+            warnings.warn(f"NaNs detected. Skipping batch")
+            return None
 
         # Logits is of shape [bsz, comps]
         idxs = torch.argmax(logits)

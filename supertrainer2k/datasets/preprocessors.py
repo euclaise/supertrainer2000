@@ -19,12 +19,12 @@ class Preprocessor:
         if 'add_special_tokens' not in tokenizer_kwargs:
             tokenizer_kwargs['add_special_tokens'] = False
 
-        if max_length != None:
+        if max_length != None and truncate:
             tokenizer_kwargs['max_length'] = max_length
             tokenizer_kwargs['truncation'] = True
 
         def fn(row):
-            toks = tokenizer.encode(text, **tokenizer_kwargs)
+            toks = tokenizer.encode(row[column_name], **tokenizer_kwargs)
             return {
                 'input_ids': toks,
                 'labels': toks
@@ -32,7 +32,7 @@ class Preprocessor:
 
         datamodule = datamodule.map(fn)
 
-        if truncate == False and max_length != None:
+        if not truncate and max_length != None:
             datamodule = datamodule.filter(lambda row: len(row['input_ids']) <= max_length)
     
         return datamodule
@@ -49,7 +49,7 @@ class Preprocessor:
         if 'add_special_tokens' not in tokenizer_kwargs:
             tokenizer_kwargs['add_special_tokens'] = False
             
-        if max_length != None:
+        if max_length != None and truncate:
             tokenizer_kwargs['max_length'] = max_length
             tokenizer_kwargs['truncation'] = True
 
@@ -65,7 +65,7 @@ class Preprocessor:
 
         datamodule = datamodule.map(map_fn)
         
-        if truncate == False and max_length != None:
+        if not truncate and max_length != None:
             datamodule = datamodule.filter(lambda row: all(len(x) <= max_length for x in row['input_ids']))
 
         return datamodule
@@ -84,7 +84,7 @@ class Preprocessor:
         if 'add_special_tokens' not in tokenizer_kwargs:
             tokenizer_kwargs['add_special_tokens'] = False
             
-        if max_length != None:
+        if max_length != None and truncate:
             tokenizer_kwargs['max_length'] = max_length
             tokenizer_kwargs['truncation'] = True
 
@@ -99,7 +99,7 @@ class Preprocessor:
 
         datamodule = datamodule.map(map_fn)
         
-        if truncate == False and max_length != None:
+        if not truncate and max_length != None:
             datamodule = datamodule.filter(lambda row: all(len(x) <= max_length for x in row['input_ids']))
 
         return datamodule
@@ -143,7 +143,7 @@ class Preprocessor:
             
         datamodule = datamodule.map(map_fn)
             
-        if truncate == False and max_length != None:
+        if not truncate and max_length != None:
             datamodule = datamodule.filter(lambda row: all(len(x) <= max_length for x in row['input_ids']))
             
         return datamodule
@@ -178,7 +178,7 @@ class Preprocessor:
             
         datamodule = datamodule.map(map_fn)
 
-        if truncate == False and max_length != None:
+        if not truncate and max_length != None:
             datamodule = datamodule.filter(lambda row: all(len(x) <= max_length for x in row['input_ids']))
 
         return datamodule

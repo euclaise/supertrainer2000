@@ -30,11 +30,7 @@ class PROWrapper(Wrapper):
         rank_loss_inner_batched = torch.vmap(rank_loss_inner, in_dims=(0, 0, None, None))
 
         def rank_loss_batch(logprobs, ranks, mask):
-            valid = mask * (ranks != -100)
-
-            # The minimum value (excluding -100) has no comparisons available
-            ranks_min = torch.min(torch.where(ranks == -100, float('inf'), ranks))
-            valid = valid * (ranks != ranks_min)
+            valid = mask * (ranks != -100) * (ranks != torch.max(ranks))
             
             return torch.where(valid, rank_loss_inner_batched(logprobs, ranks, logprobs, ranks), 0).sum() / valid.sum()
 

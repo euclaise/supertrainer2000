@@ -7,8 +7,10 @@ import torch
 import warnings
 
 class PROWrapper(Wrapper):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, use_average=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        self.use_average = use_average
             
         def rank_loss_inner(logprob_chosen, rank, logprobs, ranks):
             mask = (ranks > rank)
@@ -17,15 +19,24 @@ class PROWrapper(Wrapper):
             all_max = torch.maximum(all_max, logprob_chosen)
             all_exp = torch.exp(logprobs - all_max) * mask
             p_chosen = torch.exp(logprob_chosen - all_max)
-            denom = p_chosen + all_exp.sum(dim=-1)
-            
-            return -(torch.log(p_chosen / denom))
+
+            if self.use_average:
+                denom = p_chosen + (all_exp.sum(dim=-1) / mask.sum(dim=-1))
+            else:
+                denom = p_chosen + all_exp.sum(dim=-1)
+
+            return -torch.where(mask.sum(dim=-1) > 0, torch.log(p_chosen / denom), 0)
         
         rank_loss_inner_batched = torch.vmap(rank_loss_inner, in_dims=(0, 0, None, None))
 
         def rank_loss_batch(logprobs, ranks, mask):
             valid = mask * (ranks != -100)
-            return (valid*rank_loss_inner_batched(logprobs, ranks, logprobs, ranks)).sum() / valid.sum()
+
+            # The minimum value (excluding -100) has no comparisons available
+            ranks_min = torch.min(torch.where(ranks == -100, float('inf'), ranks))
+            valid = valid * (ranks != ranks_min)
+            
+            return torch.where(valid, rank_loss_inner_batched(logprobs, ranks, logprobs, ranks), 0).sum() / valid.sum()
 
         self.rank_loss_batched = torch.vmap(rank_loss_batch, in_dims=(0, 0, 0))
 

@@ -119,25 +119,25 @@ class DataModule(L.LightningDataModule):
         return cls(ds_dict, seed, streaming)
 
     @classmethod
-    def concatenate(cls, to_concat):
-        if self.streaming:
-            raise ValueError('Cannot concatenate streamed datamodules, use datamodule.interleave instead')
+    def merge(cls, to_merge):
         ds_dict = {}
+        if any([ds.streaming for ds in to_merge]):
+            raise ValueError('Cannot concatenate streamed datamodules, use datamodule.interleave instead')
         
         for k in ['train', 'test', 'validation']:
-            if to_concat[0].ds_dict[k] is not Null:
-                ds_dict[k] = datasets.concatenate_datasets([d.ds_dict[k] for d in to_concat]).shuffle(seed=self.seed)
+            if to_merge[0].ds_dict[k] is not None:
+                ds_dict[k] = datasets.concatenate_datasets([d.ds_dict[k] for d in to_merge]).shuffle(seed=to_merge[0].seed)
             else:
                 ds_dict[k] = None
 
-        return cls.from_existing(to_concat[0], ds_dict=ds_dict)
+        return cls.from_existing(to_merge[0], ds_dict=ds_dict)
 
     @classmethod
     def interleave(cls, to_concat: List, probabilities: List[float]):
         ds_dict = {}
         
         for k in ['train', 'test', 'validation']:
-            if to_concat[0].ds_dict[k] is not Null:
+            if to_concat[0].ds_dict[k] is not None:
                 ds_dict[k] = datasets.interleave_datasets([d.ds_dict[k] for d in to_concat], probabilities=probabilities, seed=self.seed).shuffle(seed=self.seed)
             else:
                 ds_dict[k] = None
@@ -146,7 +146,7 @@ class DataModule(L.LightningDataModule):
 
 
     def do_all(self, fn: Callable):
-        ds_dict = {}
+        ds_dict = {'train': None, 'test': None, 'validation': None}
         for k, v in self.ds_dict.items():
             if v is not None:
                 ds_dict[k] = fn(v)
@@ -188,5 +188,12 @@ class DataModule(L.LightningDataModule):
             'test': splits2['test'],
             'validation': val
         }
+
+        return self.from_existing(self, ds_dict=ds_dict)
+
+    def take(self, ns):
+        ds_dict = {'train': None, 'test': None, 'validation': None}
+        for k, v in ns.items():
+            ds_dict[k] = self.ds_dict[k].select(range(v))
 
         return self.from_existing(self, ds_dict=ds_dict)

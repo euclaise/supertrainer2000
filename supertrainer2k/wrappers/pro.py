@@ -10,21 +10,16 @@ class PROWrapper(_Wrapper):
         super().__init__(*args, **kwargs)
 
         def rank_loss_inner(logprob_chosen, rank, logprobs, ranks):
-            valid = ranks > rank
+            valid = (ranks > rank)
             logprobs_rejected = torch.where(valid, logprobs, float('-inf'))
             logprobs_rejected = torch.where(valid.sum(dim=-1) == 0, 0, logprobs_rejected)
             logdenom = torch.logsumexp(torch.cat((logprob_chosen.unsqueeze(0), logprobs_rejected), dim=0), dim=-1)
-            return  -((logprob_chosen - logdenom) * valid).sum(dim=-1) / (valid.sum(dim=-1) + (valid.sum(dim=-1) == 0))
-    
-        def has_comparisons(logprob_chosen, rank, logprobs, ranks):
-            return ((ranks > rank).sum(dim=-1) > 0) * (rank != -100)
+            return  -(logprob_chosen - logdenom)
         
         rank_loss_inner_batched = torch.vmap(rank_loss_inner, in_dims=(0, 0, None, None))
-        has_comparisons_batched = torch.vmap(has_comparisons, in_dims=(0, 0, None, None))
 
         def rank_loss_batch(logprobs, ranks):
-            valid = has_comparisons_batched(logprobs, ranks, logprobs, ranks)
-            return (valid*rank_loss_inner_batched(logprobs, ranks, logprobs, ranks)).sum() / valid.sum()
+            return ((ranks != -100)*rank_loss_inner_batched(logprobs, ranks, logprobs, ranks)).sum() / (ranks != -100).sum()
 
         self.rank_loss_batched = torch.vmap(rank_loss_batch, in_dims=(0, 0))
 
@@ -47,11 +42,11 @@ class PROWrapper(_Wrapper):
             (flat_attn_mask.sum(dim=-1) == 0).unsqueeze(-1),
             torch.ones_like(flat_attn_mask),
             flat_attn_mask
-        ) # The attention mask for pad sequences is all-zero, which would cause NaN
+        ) # The attention mask for pad sequences is all-zero, which would cause NaN, which annoyed me when debugging
 
         logits = self.model(input_ids=flat_input_ids, attention_mask=flat_attn_mask_e).logits.log_softmax(dim=-1)
 
-        mask = (flat_labels != -100)
+        mask = (flat_labels != -100) * (flat_attn_mask_e != -100)
         logits = torch.gather(logits, -1, torch.where(mask, flat_labels, 0).unsqueeze(-1)).squeeze(-1) * mask
         logits = logits.view(bsz, comps, seq_len - 1).sum(dim=-1)
         
@@ -67,7 +62,9 @@ class PROWrapper(_Wrapper):
         bsz, n_seqs = logprobs.shape
 
         rank_loss = self.rank_loss_batched(logprobs, batch['ranks']).mean()
+        assert not torch.isnan(rank_loss)
         lm_loss = -logprobs[batch['ranks'] == 0].mean()
+        assert not torch.isnan(lm_loss)
         loss = lm_loss + rank_loss
 
         self.log('train/lm_loss', lm_loss)

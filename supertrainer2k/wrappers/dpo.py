@@ -9,6 +9,9 @@ import copy
 import warnings
 
 class DPOWrapper(Wrapper):
+    """
+    Unfinished.
+    """
     def __init__(self, ref_model: torch.nn.Module, beta: float = 0.1, eps: float = 1.0, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.beta = beta

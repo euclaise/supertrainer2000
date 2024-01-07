@@ -6,6 +6,10 @@ from .wrapper import Wrapper
 import warnings
 
 class SFTWrapper(Wrapper):
+    """
+    `SFTWrapper` is a `Wrapper` designed for supervised fine-tuning of transformer models.
+    """
+
     def training_step(self, batch, batch_idx):
         try:
             logits, mask = self.get_logits(self.model, batch)

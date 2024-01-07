@@ -7,10 +7,21 @@ import torch
 import warnings
 
 class PROWrapper(Wrapper):
-    def __init__(self, use_average=True, *args, **kwargs):
+    """
+    `PROWrapper` is a `Wrapper` designed for training transformer models using a length-normalized cross-entropy loss over ranking data.
+
+    This method was introduced by Song et al. in https://arxiv.org/abs/2306.17492
+    """
+    def __init__(self, beta: float = 1.0, use_average: bool = False, *args, **kwargs):
+        """
+        Args:
+            beta (float, optional): Weight of the rank loss in the total loss calculation. Defaults to 1.0.
+            use_average (bool, optional): Flag to determine if averaging is used in rank loss calculation instead of summation. This may help reduce loss instability when the number of response options varies. Defaults to True.
+        """
         super().__init__(*args, **kwargs)
 
         self.use_average = use_average
+        self.beta = beta
             
         def rank_loss_inner(logprob_chosen, rank, logprobs, ranks):
             mask = (ranks > rank)
@@ -53,7 +64,7 @@ class PROWrapper(Wrapper):
         rank_loss = self.rank_loss_batched(logprobs, ranks, mask).mean()        
         lm_loss = -(logprobs[ranks == 0] * mask[ranks == 0]).sum() / mask[ranks == 0].sum()
         
-        loss = lm_loss + rank_loss
+        loss = lm_loss + self.beta*rank_loss
 
         self.log('train/lm_loss', lm_loss)
         self.log('train/rank_loss', rank_loss)

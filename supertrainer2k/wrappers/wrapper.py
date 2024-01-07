@@ -8,6 +8,9 @@ from ..optim.dummy import _DummyOptimizer
 from torch.distributed.optim.apply_optimizer_in_backward import _apply_optimizer_in_backward
 
 class Wrapper(L.LightningModule):
+    """
+    The `Wrapper` class defines basic wrapper properties, and is subclassed by classes such as `SFTWrapper` which wrap around Huggingface transformers models.
+    """
     def __init__(self,
         model: transformers.PreTrainedModel,
         optimizer: Optimizer,
@@ -16,15 +19,27 @@ class Wrapper(L.LightningModule):
         tokenizer,
         adalite_backward: bool = False,
         scheduler_config: Optional[Dict] = None,
-        optimizer_params: Optional[Dict] = {},
+        optimizer_args: Optional[Dict] = {},
         clip_outputs: Optional[float] = None,
         skip_nans: int = 10,
     ):
+        """
+        Parameters:
+            model (transformers.PreTrainedModel): The transformer model to be trained.
+            optimizer_cls (Optimizer): The class of the optimizer to use for training.
+            scheduler (Callable): The learning rate scheduler function.
+            lr (float): The learning rate.
+            adalite_backward (bool): Flag to use Adalite-style backward passes, where the parameter updates are fused with the gradient computations. Default is False.
+            scheduler_config (Optional[Dict]): Configuration for the scheduler. Default is None.
+            optimizer_args (Optional[Dict]): Additional arguments for the optimizer. Default is an empty dictionary.
+            clip_outputs (Optional[float]): Maximum value to which outputs are clipped. This clips the model outputs PRIOR to softmax, which can be helpful in the case of NaN/inf values caused by exploding logits. Default is None.
+            skip_nans (int): Number of consecutive NaN/inf values to ignore during training. Default is 10.
+        """
         super().__init__()
         self.model = model
         self.optimizer_cls = optimizer
         self.scheduler = scheduler
-        self.optimizer_params = optimizer_params
+        self.optimizer_args = optimizer_args
         self.lr = lr
         self.adalite_backward = adalite_backward
         self.clip_outputs = clip_outputs
@@ -78,16 +93,16 @@ class Wrapper(L.LightningModule):
             if self.trainer.accumulate_grad_batches > 1:
                 raise ValueError("Gradient accumulation is incompatible with Adalite-style backwarsds passes. Please pass adalite_backward=False to your Wrapper, or do not use gradient accumulation.")
 
-            self.optimizer_params['lr'] = self.lr
+            self.optimizer_args['lr'] = self.lr
             _apply_optimizer_in_backward(
                 self.optimizer_cls,
                 self.model.parameters(),
-                optimizer_kwargs = self.optimizer_params
+                optimizer_kwargs = self.optimizer_args
             )
 
             self.optimizer = _DummyOptimizer(self.model.parameters())
         else:  
-            self.optimizer = self.optimizer_cls(self.model.parameters(), lr=self.lr, **self.optimizer_params)
+            self.optimizer = self.optimizer_cls(self.model.parameters(), lr=self.lr, **self.optimizer_args)
 
         scheduler = self.scheduler_config
         total_steps = self.trainer.estimated_stepping_batches if scheduler['interval'] == 'step' else self.trainer.max_epochs

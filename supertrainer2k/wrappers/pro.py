@@ -36,29 +36,37 @@ class PROWrapper(_Wrapper):
         logits = logits[ranks == max_rank]
         return logits.mean()
 
-    def get_logits(self, batch):
+    def get_logits(self, batch, normalize_length = True):
         bsz, comps, seq_len = batch['input_ids'].shape
         
         flat_input_ids = batch['input_ids'].view(-1, seq_len)[:, :-1]
         flat_attn_mask = batch['attention_mask'].view(-1, seq_len)[:, :-1]
         flat_labels = batch['labels'].view(-1, seq_len)[:, 1:]
 
-        logits = self.model(input_ids=flat_input_ids, attention_mask=flat_attn_mask).logits.log_softmax(dim=-1)
+        flat_attn_mask_e = torch.where(
+            (flat_attn_mask.sum(dim=-1) == 0).unsqueeze(-1),
+            torch.ones_like(flat_attn_mask),
+            flat_attn_mask
+        ) # The attention mask for pad sequences is all-zero, which would cause NaN
+
+        logits = self.model(input_ids=flat_input_ids, attention_mask=flat_attn_mask_e).logits.log_softmax(dim=-1)
 
         mask = (flat_labels != -100)
         logits = torch.gather(logits, -1, torch.where(mask, flat_labels, 0).unsqueeze(-1)).squeeze(-1) * mask
         logits = logits.view(bsz, comps, seq_len - 1).sum(dim=-1)
         
-        mask = mask.view(bsz, comps, seq_len - 1)
-        mask_sum = mask.sum(dim=-1)
+        mask_sum = mask.view(bsz, comps, seq_len - 1).sum(dim=-1)
+
+        if not normalize_length:
+            return logits
 
         return torch.where(mask_sum == 0, 0, logits / mask_sum)
 
     def training_step(self, batch, batch_idx):
-        logprobs = self.get_logits(batch)    
+        logprobs = self.get_logits(batch)
         bsz, n_seqs = logprobs.shape
 
-        rank_loss = self.rank_loss_batched(logprobs, batch['ranks']).sum()
+        rank_loss = self.rank_loss_batched(logprobs, batch['ranks']).mean()
         lm_loss = -logprobs[batch['ranks'] == 0].mean()
         loss = lm_loss + rank_loss
 
@@ -71,8 +79,9 @@ class PROWrapper(_Wrapper):
     def validation_step(self, batch, batch_idx, dataloader_idx=0):    
         logits = self.get_logits(batch, normalize_length=False)
         ranks = batch['ranks']
+        logits[ranks == -100] = float('-inf')
 
         _, idxs = torch.max(logits, dim=-1)
-        correct = ranks[idxs] == 0
-
-        return correct.float().mean()
+        accuracy = (ranks[torch.arange(ranks.shape[0]), idxs] == 0).float().mean()
+        self.log('eval/accuracy', accuracy)
+        return accuracy

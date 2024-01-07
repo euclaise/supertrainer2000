@@ -1,7 +1,7 @@
 from __future__ import annotations
 import lightning as L
 import datasets
-from typing import Optional, Callable, Union
+from typing import Optional, Callable, Union, Dict
 from typing_extensions import TypedDict
 from torch.utils.data import DataLoader, IterableDataset
 from ..config import NUM_PROC
@@ -17,6 +17,11 @@ class _DatasetDict(TypedDict):
     train: Union[datasets.Dataset, datasets.IterableDataset]
     test: Optional[Union[datasets.Dataset, datasets.IterableDataset]]
     validation: Optional[Union[datasets.Dataset, datasets.IterableDataset]]
+
+class _DatasetSplitSizes(TypedDict):
+    train: float
+    test: float
+    validation: float
 
 
 class DataModule(L.LightningDataModule):
@@ -45,13 +50,19 @@ class DataModule(L.LightningDataModule):
         self._immutable = False
         self.batch_size = batch_size
         self.collate_fn = collate_fn
+
+        self.train_dataloader = self.create_dataloader('train')
+
+        if self.ds_dict['validation'] != None:
+            self.val_dataloader = self.create_dataloader('validation')
+
         return self
 
-    def train_dataloader(self):
-        return DataLoader(
-            self.ds_dict['train'],
+    def create_dataloader(self, split):
+        return lambda: DataLoader(
+            self.ds_dict[split],
             batch_size=self.batch_size,
-            shuffle=not self.streaming,
+            shuffle=split == 'train' and not self.streaming,
             collate_fn=self.collate_fn,
             num_workers=NUM_PROC if not self.streaming or self.ds_dict['train'].n_shards >= NUM_PROC else 1
         )
@@ -163,3 +174,19 @@ class DataModule(L.LightningDataModule):
         if self.streaming:
             warnings.warn("Streamed datasets cannot be fully shuffled -- performing a pseudo-shuffle instead.")
         return self.do_all(lambda ds: ds.shuffle(seed=self.seed))
+
+    def create_splits(self, splits: _DatasetSplitSizes):
+        p_sum = splits['train'] + splits['test'] + splits['validation']
+        assert p_sum <= 1 and p_sum > 0, "Invalid probabilities for datamodule splits"
+
+        splits1 = self.ds_dict['train'].train_test_split(test_size = splits['validation'], train_size = splits['train'] + splits['test'], seed=self.seed)
+        val = splits1['test']
+        splits2 = splits1['train'].train_test_split(test_size = splits['test'], train_size = splits['train'], seed=self.seed)
+
+        ds_dict = {
+            'train': splits2['train'],
+            'test': splits2['test'],
+            'validation': val
+        }
+
+        return self.from_existing(self, ds_dict=ds_dict)

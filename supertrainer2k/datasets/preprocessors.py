@@ -13,25 +13,29 @@ class Preprocessor:
         tokenizer: PreTrainedTokenizer,
         column_name: str ='text',
         max_length: Optional[int] = None,
+        truncate: bool = False,
         tokenizer_kwargs: Dict = {},
     ):
         if 'add_special_tokens' not in tokenizer_kwargs:
             tokenizer_kwargs['add_special_tokens'] = False
-            
+
         if max_length != None:
             tokenizer_kwargs['max_length'] = max_length
             tokenizer_kwargs['truncation'] = True
 
-        def fn(text, **kwargs):
+        def fn(row):
             toks = tokenizer.encode(text, **tokenizer_kwargs)
             return {
                 'input_ids': toks,
                 'labels': toks
             }
+
+        datamodule = datamodule.map(fn)
+
+        if truncate == False and max_length != None:
+            datamodule = datamodule.filter(lambda row: len(row['input_ids']) <= max_length)
     
-        return datamodule.map(
-            lambda x: fn(x[column_name]),
-        )
+        return datamodule
         
     @staticmethod
     def multi_choice_text(
@@ -39,6 +43,7 @@ class Preprocessor:
         tokenizer: PreTrainedTokenizer,
         column_names: Sequence[str, str] = ('chosen', 'rejected'),
         max_length: Optional[int] = None,
+        truncate: bool = False,
         tokenizer_kwargs: Dict = {}
     ):
         if 'add_special_tokens' not in tokenizer_kwargs:
@@ -58,7 +63,12 @@ class Preprocessor:
                 'ranks': [0] + [1]*len(rejected),
             }
 
-        return datamodule.map(map_fn)
+        datamodule = datamodule.map(map_fn)
+        
+        if truncate == False and max_length != None:
+            datamodule = datamodule.filter(lambda row: all(len(x) <= max_length for x in row['input_ids']))
+
+        return datamodule
 
         
     @staticmethod
@@ -68,6 +78,7 @@ class Preprocessor:
         column_name: str = 'completions',
         completions_keys: Sequence[str, str] = ('text', 'rank'),
         max_length: Optional[int] = None,
+        truncate: bool = False,
         tokenizer_kwargs: Dict = {}
     ):
         if 'add_special_tokens' not in tokenizer_kwargs:
@@ -86,7 +97,12 @@ class Preprocessor:
                 'ranks': ranks,
             }
 
-        return datamodule.map(map_fn)
+        datamodule = datamodule.map(map_fn)
+        
+        if truncate == False and max_length != None:
+            datamodule = datamodule.filter(lambda row: all(len(x) <= max_length for x in row['input_ids']))
+
+        return datamodule
 
     @staticmethod
     def multi_instruction_response(
@@ -96,6 +112,7 @@ class Preprocessor:
         role_names: Sequence[str, str] = ('instruction', 'response'),
         msg_keys: Sequence[str, str] = ('text', 'role'),
         max_length: Optional[int] = None,
+        truncate: bool = False,
         tokenizer_kwargs: Dict = {},
     ):
         if 'add_special_tokens' not in tokenizer_kwargs:
@@ -115,12 +132,21 @@ class Preprocessor:
                 else:
                     raise ValueError(f"Unknown role name, {msg[msg_keys[1]]}")
 
+            if truncate and max_length != None:
+                input_ids = input_ids[:max_length]
+                labels = labels[:max_length]
+    
             return {
-                'input_ids': input_ids[:max_length],
-                'labels': labels[:max_length],
+                'input_ids': input_ids,
+                'labels': labels,
             }
             
-        return datamodule.map(map_fn)
+        datamodule = datamodule.map(map_fn)
+            
+        if truncate == False and max_length != None:
+            datamodule = datamodule.filter(lambda row: all(len(x) <= max_length for x in row['input_ids']))
+            
+        return datamodule
 
 
     @staticmethod
@@ -138,9 +164,21 @@ class Preprocessor:
             instruction = tokenizer.encode(x[column_names[0]], **tokenizer_kwargs)
             response = tokenizer.encode(x[column_names[1]], **tokenizer_kwargs)
 
+            input_ids = instruction + response
+            labels = [-100]*len(instruction) + response
+
+            if truncate and max_length != None:
+                input_ids = input_ids[:max_length]
+                labels = labels[:max_length]
+    
             return {
-                'input_ids': (instruction + response)[:max_length],
-                'labels': ([-100]*len(instruction) + response)[:max_length]
+                'input_ids': input_ids,
+                'labels': labels,
             }
             
-        return datamodule.map(map_fn)
+        datamodule = datamodule.map(map_fn)
+
+        if truncate == False and max_length != None:
+            datamodule = datamodule.filter(lambda row: all(len(x) <= max_length for x in row['input_ids']))
+
+        return datamodule

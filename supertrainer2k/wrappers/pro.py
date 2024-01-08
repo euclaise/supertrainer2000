@@ -50,21 +50,22 @@ class PROWrapper(Wrapper):
 
     def training_step(self, batch, batch_idx):
         ranks = batch['ranks']
-        try:
-            logprobs, mask = self.get_logits(self.model, batch)
-        except AssertionError as e:
+        logprobs, mask = self.get_logits(self.model, batch)
+
+        bsz, n_seqs = logprobs.shape
+        rank_loss = self.rank_loss_batched(logprobs, ranks, mask)
+
+        rank_loss = rank_loss.mean()
+        lm_loss = -(logprobs[ranks == 0] * mask[ranks == 0]).sum() / mask[ranks == 0].sum()
+        loss = lm_loss + self.beta*rank_loss
+
+        if torch.isnan(loss):
             self.nan_counter += 1
             self.consecutive_nans += 1
             assert self.consecutive_nans <= self.skip_nans
             warnings.warn(f"NaNs or infs detected ({self.nan_counter} in training so far). Skipping batch.")
             return None
         self.consecutive_nans = 0
-        bsz, n_seqs = logprobs.shape
-    
-        rank_loss = self.rank_loss_batched(logprobs, ranks, mask).mean()        
-        lm_loss = -(logprobs[ranks == 0] * mask[ranks == 0]).sum() / mask[ranks == 0].sum()
-        
-        loss = lm_loss + self.beta*rank_loss
 
         self.log('train/lm_loss', lm_loss)
         self.log('train/rank_loss', rank_loss)
@@ -73,15 +74,16 @@ class PROWrapper(Wrapper):
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        try:   
-            logits, mask = self.get_logits(self.model, batch, normalize_length=False)
-        except AssertionError as e:
-            warnings.warn(f"NaNs or infs detected in validation. Skipping batch.")
-            return None
+        logits, mask = self.get_logits(self.model, batch, normalize_length=False)
+
         ranks = batch['ranks']
         logits[ranks == -100] = float('-inf')
 
         _, idxs = torch.max(logits, dim=-1)
         accuracy = (ranks[torch.arange(ranks.shape[0]), idxs] == 0).float().mean()
+
+        if torch.isnan(accuracy) or torch.isinf(accuracy):
+            warnings.warn(f"NaNs or infs detected in validation. Skipping batch.")
+            return None
         self.log('eval/accuracy', accuracy)
         return accuracy

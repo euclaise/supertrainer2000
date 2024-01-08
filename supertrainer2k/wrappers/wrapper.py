@@ -72,8 +72,6 @@ class Wrapper(L.LightningModule):
 
         logits = logits.log_softmax(dim=-1)
 
-        assert not torch.isnan(logits).any() and not torch.isinf(logits).any()
-
         mask = (flat_labels != -100) * (flat_attn_mask != 0)
         logits = torch.gather(logits, -1, torch.where(mask, flat_labels, 0).unsqueeze(-1)).squeeze(-1) * mask
         new_shape = orig_shape[:-1] + (seq_len - 1,)
@@ -84,7 +82,7 @@ class Wrapper(L.LightningModule):
         if not normalize_length:
             return logits, (n != 0)
 
-        return torch.where(n != 0, logits / n, 0), (n != 0)
+        return (n != 0) * (logits / (n + (n == 0))), (n != 0)
        
     def configure_optimizers(self):
         if self.adalite_backward:

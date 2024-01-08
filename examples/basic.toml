@@ -23,5 +23,5 @@ scheduler.num_warmup_steps = 140
 max_epochs = 1
 accelerator = "gpu"
 devices = 1
-logging = "wandb"
+wandb_project = "supertrainer2k_test"
 batch_size=2

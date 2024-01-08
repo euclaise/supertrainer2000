@@ -70,6 +70,52 @@ class Preprocessor:
 
         return datamodule
 
+
+
+    @staticmethod
+    def multi_choice_masked(
+        datamodule: DataModule,
+        tokenizer: PreTrainedTokenizer,
+        column_names: Sequence[str, str] = ('text', 'masked', 'chosen', 'rejected'),
+        max_length: Optional[int] = None,
+        truncate: bool = False,
+        tokenizer_kwargs: Dict = {}
+    ):
+        if 'add_special_tokens' not in tokenizer_kwargs:
+            tokenizer_kwargs['add_special_tokens'] = False
+            
+        if max_length != None and truncate:
+            tokenizer_kwargs['max_length'] = max_length
+            tokenizer_kwargs['truncation'] = True
+
+
+        def map_fn(row):
+
+            def extract(resp):
+                input_ids = []
+                labels = []
+                for segment in resp:
+                    toks = tokenizer.encode(segment[column_names[0]], **tokenizer_kwargs)
+                    input_ids += toks
+                    labels += [-100]*len(toks) if segment[column_names[1]] else toks
+                return input_ids, labels
+
+            correct = extract(row[column_names[2]])
+            incorrect = [extract(x) for x in row[column_names[3]]]
+
+            return {
+                'input_ids': [correct[0]] + [i[0] for i in incorrect],
+                'labels': [correct[1]] + [i[1] for i in incorrect],
+                'ranks': [0] + [1]*len(incorrect),
+            }
+
+        datamodule = datamodule.map(map_fn)
+        
+        if not truncate and max_length != None:
+            datamodule = datamodule.filter(lambda row: all(len(x) <= max_length for x in row['input_ids']))
+
+        return datamodule
+
         
     @staticmethod
     def ranked_text(

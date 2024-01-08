@@ -11,29 +11,26 @@ class SFTWrapper(Wrapper):
     """
 
     def training_step(self, batch, batch_idx):
-        try:
-            logits, mask = self.get_logits(self.model, batch)
-        except AssertionError as e:
+        logits, mask = self.get_logits(self.model, batch)
+  
+        loss = -(logits * mask).sum() / mask.sum()
+        if torch.isnan(loss):
             self.nan_counter += 1
             self.consecutive_nans += 1
             assert self.consecutive_nans <= self.skip_nans
             warnings.warn(f"NaNs or infs detected ({self.nan_counter} in training so far). Skipping batch")
             return None
-
         self.consecutive_nans = 0
-        loss = -(logits * mask).sum() / mask.sum()
-
         self.log("train/loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        try:
-            logits, mask = self.get_logits(self.model, batch, normalize_length=False)
-        except AssertionError as e:
-            warnings.warn(f"NaNs or infs detected in validation. Skipping batch")
-            return None
+        logits, mask = self.get_logits(self.model, batch, normalize_length=False)
+
 
         loss = -(logits * mask).sum() / mask.sum()
-
+        if torch.isnan(loss).any():
+            warnings.warn(f"NaNs or infs detected in validation. Skipping batch")
+            return None
         self.log("validation/loss", loss)
         return {'loss': loss}

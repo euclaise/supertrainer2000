@@ -4,6 +4,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from .wrapper import Wrapper
 import warnings
+import torch
 
 class SFTWrapper(Wrapper):
     """
@@ -14,7 +15,7 @@ class SFTWrapper(Wrapper):
         logits, mask = self.get_logits(self.model, batch)
   
         loss = -(logits * mask).sum() / mask.sum()
-        if torch.isnan(loss):
+        if torch.isnan(loss) or torch.isinf(loss):
             self.nan_counter += 1
             self.consecutive_nans += 1
             assert self.consecutive_nans <= self.skip_nans
@@ -29,7 +30,7 @@ class SFTWrapper(Wrapper):
 
 
         loss = -(logits * mask).sum() / mask.sum()
-        if torch.isnan(loss).any():
+        if torch.isnan(loss) or torch.isinf(loss):
             warnings.warn(f"NaNs or infs detected in validation. Skipping batch")
             return None
         self.log("validation/loss", loss)

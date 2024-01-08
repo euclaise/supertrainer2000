@@ -12,7 +12,7 @@ class PROWrapper(Wrapper):
 
     This method was introduced by Song et al. in https://arxiv.org/abs/2306.17492
     """
-    def __init__(self, beta: float = 1.0, use_average: bool = False, *args, **kwargs):
+    def __init__(self, beta: float = 1.0, use_average: bool = True, *args, **kwargs):
         """
         Args:
             beta (float, optional): Weight of the rank loss in the total loss calculation. Defaults to 1.0.
@@ -80,7 +80,6 @@ class PROWrapper(Wrapper):
             return None
         ranks = batch['ranks']
         logits[ranks == -100] = float('-inf')
-        logits[mask] = float('-inf')
 
         _, idxs = torch.max(logits, dim=-1)
         accuracy = (ranks[torch.arange(ranks.shape[0]), idxs] == 0).float().mean()

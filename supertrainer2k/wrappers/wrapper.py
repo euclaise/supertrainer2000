@@ -16,12 +16,11 @@ class Wrapper(L.LightningModule):
         optimizer: Optimizer,
         scheduler: Callable,
         lr: float,
-        tokenizer,
         adalite_backward: bool = False,
         scheduler_config: Optional[Dict] = None,
         optimizer_args: Optional[Dict] = {},
         clip_outputs: Optional[float] = None,
-        skip_nans: int = 10,
+        skip_nans: int = 3,
     ):
         """
         Parameters:
@@ -33,7 +32,7 @@ class Wrapper(L.LightningModule):
             scheduler_config (Optional[Dict]): Configuration for the scheduler. Default is None.
             optimizer_args (Optional[Dict]): Additional arguments for the optimizer. Default is an empty dictionary.
             clip_outputs (Optional[float]): Maximum value to which outputs are clipped. This clips the model outputs PRIOR to softmax, which can be helpful in the case of NaN/inf values caused by exploding logits. Default is None.
-            skip_nans (int): Number of consecutive NaN/inf values to ignore during training. Default is 10.
+            skip_nans (int): Number of consecutive NaN/inf values to ignore during training before error. Default is 3.
         """
         super().__init__()
         self.model = model
@@ -54,7 +53,6 @@ class Wrapper(L.LightningModule):
                 'interval': 'step',
                 'frequency': 1
             }
-        self.tokenizer = tokenizer
     def forward(self, *args, **kwargs):
         return self.model(*args, **kwargs)
 

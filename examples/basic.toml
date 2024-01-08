@@ -1,0 +1,27 @@
+[model]
+name = "tiiuae/falcon-rw-1b"
+dtype = "bfloat16"
+
+[dataset]
+hf_name = "JeanKaddour/minipile"
+split = "train"
+streaming = true
+
+[dataset.preprocessor]
+type = "simple_text"
+column_name = "text"
+max_length = 256
+
+[wrapper]
+type = "SFTWrapper"
+lr = 1e-5
+optimizer.name = "Adalite"
+scheduler.name = "cosine"
+scheduler.num_warmup_steps = 140
+
+[trainer]
+max_epochs = 1
+accelerator = "gpu"
+devices = 1
+logging = "wandb"
+batch_size=2

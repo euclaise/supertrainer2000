@@ -120,7 +120,7 @@ class Preprocessor:
     def ranked_masked(
         datamodule: DataModule,
         tokenizer: PreTrainedTokenizer,
-        column_names: Sequence[str, str] = ('completions', 'text', 'rank', 'mask'),
+        column_names: Sequence[str, str] = ('completions', 'messages', 'text', 'masked', 'rank'),
         max_length: Optional[int] = None,
         truncate: bool = False,
         tokenizer_kwargs: Dict = {}
@@ -136,11 +136,13 @@ class Preprocessor:
             def extract(resp):
                 input_ids = []
                 labels = []
-                for segment in resp:
-                    toks = tokenizer.encode(segment[column_names[1]], **tokenizer_kwargs)
+                rank = resp[column_names[4]]
+                
+                for segment in resp[column_names[1]]:
+                    toks = tokenizer.encode(segment[column_names[2]], **tokenizer_kwargs)
                     input_ids += toks
                     labels += [-100]*len(toks) if segment[column_names[3]] else toks
-                return input_ids, labels, segment[column_names[2]]
+                return input_ids, labels, rank
 
             completions = [extract(x) for x in row[column_names[0]]]
 
@@ -242,14 +244,15 @@ class Preprocessor:
         tokenizer: PreTrainedTokenizer,
         column_names: Sequence[str, str] = ('instruction', 'response'),
         max_length: Optional[int] = None,
+        truncate: bool = False,
         tokenizer_kwargs: Dict = {},
     ):
         if 'add_special_tokens' not in tokenizer_kwargs:
             tokenizer_kwargs['add_special_tokens'] = False
 
         def map_fn(row):
-            instruction = tokenizer.encode(x[column_names[0]], **tokenizer_kwargs)
-            response = tokenizer.encode(x[column_names[1]], **tokenizer_kwargs)
+            instruction = tokenizer.encode(row[column_names[0]], **tokenizer_kwargs)
+            response = tokenizer.encode(row[column_names[1]], **tokenizer_kwargs)
 
             input_ids = instruction + response
             labels = [-100]*len(instruction) + response
@@ -266,6 +269,6 @@ class Preprocessor:
         datamodule = datamodule.map(map_fn)
 
         if not truncate and max_length != None:
-            datamodule = datamodule.filter(lambda row: all(len(x) <= max_length for x in row['input_ids']))
+            datamodule = datamodule.filter(lambda row: len(row['input_ids']) <= max_length)
 
         return datamodule

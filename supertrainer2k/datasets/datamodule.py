@@ -193,7 +193,7 @@ class DataModule(L.LightningDataModule):
 
     def take(self, ns):
         ds_dict = {'train': None, 'test': None, 'validation': None}
-        for k, v in enumerate(ns.items()):
+        for k, v in ns.items():
             ds_dict[k] = self.ds_dict[k].select(range(v))
 
         return self.from_existing(self, ds_dict=ds_dict)

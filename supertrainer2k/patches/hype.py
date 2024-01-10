@@ -12,17 +12,16 @@ class HyPeLayer(nn.Module):
         self.orig = orig
         self.sigma = sigma
     
-    def forward(self, xs):
-        xs = self.orig(xs)
-        eps = torch.rand_like(xs)
-        xs = xs + self.sigma*eps
-        return xs
+    def forward(self, hidden_states, **kwargs):
+        eps = torch.rand_like(hidden_states)
+        xs = hidden_states + self.sigma*eps
+        return self.orig(xs)
 
     def unpatch(self):
         return self.orig
         
-def apply_hype(model, sigma, layer_key='layer'):
-    patch_model(model, [nn.Module], lambda m: HyPeLayer(m, sigma), name_constraints = lambda k: k == 'layer_key')
+def apply_hype(model, sigma, layer_class):
+    patch_model(model, [layer_class], lambda m: HyPeLayer(m, sigma))
 
 def remove_hype(model):
     patch_model(model, [HyPeLayer], lambda m: m.unpatch())

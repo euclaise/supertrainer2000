@@ -12,10 +12,10 @@ class HyPeLayer(nn.Module):
         self.orig = orig
         self.sigma = sigma
     
-    def forward(self, hidden_states, **kwargs):
+    def forward(self, hidden_states,**kwargs):
         eps = torch.rand_like(hidden_states)
         xs = hidden_states + self.sigma*eps
-        return self.orig(xs)
+        return self.orig(xs, **kwargs)
 
     def unpatch(self):
         return self.orig

@@ -13,8 +13,8 @@ class NEFTEmbedding(nn.Module):
         self.alpha = alpha
         self.seq_len = seq_len
     
-    def forward(self, input_ids):
-        xs = self.emb(input_ids)
+    def forward(self, xs):
+        xs = self.emb(xs)
         eps = torch.rand_like(xs)
         xs = xs + (self.alpha / math.sqrt(self.seq_len * xs.shape[-1])) * eps
         return xs

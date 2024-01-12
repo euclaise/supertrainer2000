@@ -26,7 +26,7 @@ class SFTWrapper(Wrapper):
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        logits, mask = self.get_logits(self.model, batch, normalize_length=False)
+        logits, mask = self.get_logits(self.model, batch)
 
 
         loss = -(logits * mask).sum() / mask.sum()

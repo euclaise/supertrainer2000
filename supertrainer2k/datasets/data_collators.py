@@ -5,24 +5,23 @@ from collections.abc import Sequence
 
 class DataCollator:
     class Causal:
-        tokenizer: PreTrainedTokenizer
-
         def __init__(self, pad_id=0):
             self.pad_id = pad_id
 
         def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
             ids = [d['input_ids'] for d in instances]
-            labels = [d['labels'] for d in instances]
+            labs = [d['labels'] for d in instances]
 
             max_seq_len = max(len(x) for x in ids)
+            pad_len = lambda x: max_seq_len - len(x)
 
-            input_ids = [torch.tensor([self.pad_id]*(max_seq_len - len(x)) + x, dtype=torch.long) for x in ids]
+            input_ids = [torch.tensor(x + [self.pad_id]*pad_len(x), dtype=torch.long) for x in ids]
             input_ids = torch.stack(input_ids)
             
-            labels = [torch.tensor([-100]*(max_seq_len - len(x)) + x, dtype=torch.long) for x in labels]
+            labels = [torch.tensor(x + [-100]*pad_len(x), dtype=torch.long) for x in labs]
             labels = torch.stack(labels)
 
-            attention_mask = [torch.tensor([False]*(max_seq_len - len(x)) + [True]*len(x), dtype=torch.bool) for x in ids]
+            attention_mask = [torch.tensor([True]*len(x) + [False]*pad_len(x), dtype=torch.bool) for x in ids]
             attention_mask = torch.stack(attention_mask)
 
             return dict(

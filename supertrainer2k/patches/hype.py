@@ -21,7 +21,7 @@ class HyPeLayer(nn.Module):
     def unpatch(self):
         return self.orig
         
-def apply_hype(model, layer_class, sigma=1e-5, normal=False):
+def apply_hype(model, layer_class, sigma=1e-5, normal=True):
     assert layer_class is not None
     patch_model(model, [layer_class], lambda m: HyPeLayer(m, sigma, normal))
 

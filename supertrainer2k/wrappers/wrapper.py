@@ -21,6 +21,7 @@ class Wrapper(L.LightningModule):
         optimizer_args: Optional[Dict] = {},
         clip_outputs: Optional[float] = None,
         skip_nans: int = 3,
+        freeze_embeds: bool = False
     ):
         """
         Parameters:
@@ -36,6 +37,13 @@ class Wrapper(L.LightningModule):
         """
         super().__init__()
         self.model = model
+        if freeze_embeds:
+            for p in self.model.get_input_embeddings().parameters():
+                p.requires_grad = False
+            for p in self.model.get_output_embeddings().parameters():
+                p.requires_grad = False
+                
+        
         self.optimizer_cls = optimizer
         self.scheduler = scheduler
         self.optimizer_args = optimizer_args
@@ -56,35 +64,35 @@ class Wrapper(L.LightningModule):
     def forward(self, *args, **kwargs):
         return self.model(*args, **kwargs)
 
-    def get_logits(self, model, batch, normalize_length = True):
+    def get_logits(self, model, batch):
         orig_shape = batch['input_ids'].shape
         seq_len = orig_shape[-1]
         
-        flat_input_ids = batch['input_ids'].view(-1, seq_len)[:, :-1]
-        flat_attn_mask = batch['attention_mask'].view(-1, seq_len)[:, :-1]
-        flat_labels = batch['labels'].view(-1, seq_len)[:, 1:]
+        flat_input_ids = batch['input_ids'].view(-1, seq_len)[:, :-1].contiguous()
+        flat_attn_mask = batch['attention_mask'].view(-1, seq_len)[:, :-1].contiguous()
+        flat_labels = batch['labels'].view(-1, seq_len)[:, 1:].contiguous()
 
         flat_attn_mask_o = torch.where((flat_attn_mask.sum(dim=-1) == 0).unsqueeze(-1), 1, flat_attn_mask)
 
         logits = model(input_ids=flat_input_ids, attention_mask=flat_attn_mask_o).logits
+        
         if self.clip_outputs:
             logits = logits.clip(-self.clip_outputs, self.clip_outputs)
 
         logits = logits.log_softmax(dim=-1)
 
-        mask = (flat_labels != -100) * (flat_attn_mask != 0)
-        logits = torch.gather(logits, -1, torch.where(mask, flat_labels, 0).unsqueeze(-1)).squeeze(-1) * mask
+        mask = (flat_labels != -100)
+
+        logits = logits.gather(-1, torch.where(mask, flat_labels, 0).unsqueeze(-1))
+        
         new_shape = orig_shape[:-1] + (seq_len - 1,)
-        logits = logits.view(new_shape).sum(dim=-1)
+        mask = mask.view(new_shape)
+        logits = logits.view(new_shape)
 
-        n = mask.view(new_shape).sum(dim=-1)
-
-        if not normalize_length:
-            return logits, (n != 0)
-
-        return (n != 0) * (logits / (n + (n == 0))), (n != 0)
+        return logits, mask
        
     def configure_optimizers(self):
+        params = [p for p in self.model.parameters() if p.requires_grad]
         if self.adalite_backward:
             if self.trainer.accumulate_grad_batches > 1:
                 raise ValueError("Gradient accumulation is incompatible with Adalite-style backwarsds passes. Please pass adalite_backward=False to your Wrapper, or do not use gradient accumulation.")
@@ -96,9 +104,9 @@ class Wrapper(L.LightningModule):
                 optimizer_kwargs = self.optimizer_args
             )
 
-            self.optimizer = _DummyOptimizer(self.model.parameters())
+            self.optimizer = _DummyOptimizer(params)
         else:  
-            self.optimizer = self.optimizer_cls(self.model.parameters(), lr=self.lr, **self.optimizer_args)
+            self.optimizer = self.optimizer_cls(params, lr=self.lr, **self.optimizer_args)
 
         scheduler = self.scheduler_config
         total_steps = self.trainer.estimated_stepping_batches if scheduler['interval'] == 'step' else self.trainer.max_epochs

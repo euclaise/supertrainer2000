@@ -50,7 +50,8 @@ class PROWrapper(Wrapper):
 
     def training_step(self, batch, batch_idx):
         ranks = batch['ranks']
-        logprobs, mask = self.get_logits(self.model, batch)
+        logits, mask = self.get_logits(self.model, batch)
+        logprobs = (logits * mask).sum(dim=-1)
 
         bsz, n_seqs = logprobs.shape
         rank_loss = self.rank_loss_batched(logprobs, ranks, mask)
@@ -75,6 +76,7 @@ class PROWrapper(Wrapper):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         logits, mask = self.get_logits(self.model, batch, normalize_length=False)
+        logits = (logits*mask).sum(dim=-1)
 
         ranks = batch['ranks']
         logits[ranks == -100] = float('-inf')

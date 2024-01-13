@@ -1,5 +1,6 @@
 import lightning as L
 import torch
+import torch.nn.functional as F
 import transformers
 from torch.optim import Optimizer,  lr_scheduler
 from typing import Optional, Dict, Literal, Callable
@@ -34,6 +35,7 @@ class Wrapper(L.LightningModule):
             optimizer_args (Optional[Dict]): Additional arguments for the optimizer. Default is an empty dictionary.
             clip_outputs (Optional[float]): Maximum value to which outputs are clipped. This clips the model outputs PRIOR to softmax, which can be helpful in the case of NaN/inf values caused by exploding logits. Default is None.
             skip_nans (int): Number of consecutive NaN/inf values to ignore during training before error. Default is 3.
+            freeze_embeds (bool): Freeze input and output embeddings. This is recommended for finetuning unless you are adding custom tokens. Default is False.
         """
         super().__init__()
         self.model = model
@@ -42,7 +44,6 @@ class Wrapper(L.LightningModule):
                 p.requires_grad = False
             for p in self.model.get_output_embeddings().parameters():
                 p.requires_grad = False
-                
         
         self.optimizer_cls = optimizer
         self.scheduler = scheduler
@@ -80,11 +81,13 @@ class Wrapper(L.LightningModule):
             logits = logits.clip(-self.clip_outputs, self.clip_outputs)
 
         logits = logits.log_softmax(dim=-1)
-
         mask = (flat_labels != -100)
+        flat_labels[~mask] = 0
 
-        logits = logits.gather(-1, torch.where(mask, flat_labels, 0).unsqueeze(-1))
-        
+        logits = logits.gather(-1, flat_labels.unsqueeze(-1))
+
+
+        logits[~mask] = 0
         new_shape = orig_shape[:-1] + (seq_len - 1,)
         mask = mask.view(new_shape)
         logits = logits.view(new_shape)

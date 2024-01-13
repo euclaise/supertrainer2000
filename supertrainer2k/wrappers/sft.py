@@ -5,16 +5,32 @@ from torch.optim.lr_scheduler import _LRScheduler
 from .wrapper import Wrapper
 import warnings
 import torch
+from typing import Optional
 
 class SFTWrapper(Wrapper):
     """
     `SFTWrapper` is a `Wrapper` designed for supervised fine-tuning of transformer models.
+
+    Args:
+        mixce (Optional[float]): https://arxiv.org/abs/2305.16958
     """
+    def __init__(self,  mixce: Optional[float] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.mixce = mixce
 
     def training_step(self, batch, batch_idx):
         logits, mask = self.get_logits(self.model, batch)
-  
-        loss = -(logits * mask).sum() / mask.sum()
+
+        losses = -logits
+        
+        if self.mixce is not None:
+            q = torch.exp(-losses.detach())
+            losses = self.mixce * losses + (1 - self.mixce)*q*losses
+            
+        loss = (losses * mask).sum() / mask.sum()
+
+
         if torch.isnan(loss) or torch.isinf(loss):
             self.nan_counter += 1
             self.consecutive_nans += 1
@@ -27,7 +43,6 @@ class SFTWrapper(Wrapper):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         logits, mask = self.get_logits(self.model, batch)
-
 
         loss = -(logits * mask).sum() / mask.sum()
         if torch.isnan(loss) or torch.isinf(loss):

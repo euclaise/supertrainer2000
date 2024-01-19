@@ -7,6 +7,12 @@ from typing import Optional, Dict, Literal, Callable
 from ..datasets import DataModule
 from ..optim.dummy import _DummyOptimizer
 from torch.distributed.optim.apply_optimizer_in_backward import _apply_optimizer_in_backward
+from typing import NamedTuple
+
+
+class ElasticResetArgs(NamedTuple):
+    eta: float
+    interval: int
 
 class Wrapper(L.LightningModule):
     """
@@ -22,7 +28,8 @@ class Wrapper(L.LightningModule):
         optimizer_args: Optional[Dict] = {},
         clip_outputs: Optional[float] = None,
         skip_nans: int = 3,
-        freeze_embeds: bool = False
+        freeze_embeds: bool = False,
+        elastic_reset_args: Optional[ElasticResetArgs] = None
     ):
         """
         Parameters:
@@ -54,6 +61,10 @@ class Wrapper(L.LightningModule):
         self.nan_counter = 0
         self.skip_nans = skip_nans
         self.consecutive_nans = 0
+        self.elastic_reset_args = elastic_reset_args
+        if elastic_reset_args:
+            self.ema_model = copy.deepcopy(model)
+            self.ema_step_count = 0
 
         if scheduler_config is not None:
             self.scheduler_config = scheduler_config
@@ -64,6 +75,18 @@ class Wrapper(L.LightningModule):
             }
     def forward(self, *args, **kwargs):
         return self.model(*args, **kwargs)
+
+    def ema_update(self):
+        eta = self.elastic_reset_args.eta
+        with torch.no_grad():
+            for (ema_p, p) in zip(self.ema_model.parameters(), self.model.parameters()):
+                ema_p.data = (1 - eta)*p.data + eta*ema_p.data
+
+    def ema_reset(self):
+        if self.elastic_reset_args:
+            self.model.load_state_dict(self.ema_model.state_dict())
+            self.ema_model = copy.deepcopy(self.model)
+            self.ema_step_counter = 0
 
     def get_logits(self, model, batch):
         orig_shape = batch['input_ids'].shape
@@ -93,7 +116,15 @@ class Wrapper(L.LightningModule):
         logits = logits.view(new_shape)
 
         return logits, mask
-       
+
+    def ema_step(self):
+        if self.elastic_reset_args:
+            self.ema_update()
+            self.ema_step_counter += 1
+            if self.ema_step_counter == self.elastic_reset_args.interval:
+                self.ema_reset()
+            
+        
     def configure_optimizers(self):
         params = [p for p in self.model.parameters() if p.requires_grad]
         if self.adalite_backward:

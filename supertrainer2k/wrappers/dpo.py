@@ -7,42 +7,66 @@ from .wrapper import Wrapper
 import torch
 import copy
 import warnings
+from typing import Optional, Literal
 
 class DPOWrapper(Wrapper):
     """
     Unfinished.
     """
-    def __init__(self, ref_model: torch.nn.Module, beta: float = 0.1, eps: float = 1.0, *args, **kwargs):
+    def __init__(
+        self,
+        ref_model: Optional[torch.nn.Module],
+        beta: float = 0.1, 
+        method = Literal["dpo", "cdpo", "ipo", "rso"],
+        eps: Optional[float] = None,
+        *args, **kwargs
+    ):
         super().__init__(*args, **kwargs)
         self.beta = beta
-        self.eps = eps
+        self.eps = eps if method != "dpo" else 0.0
+        
         self.ref_model = copy.deepcopy(ref_model)
         self.ref_model.eval()
         for p in self.ref_model.parameters():
             p.requires_grad = False
 
-        def pairwise_loss(lp_cur_chosen, lp_cur_rejected, lp_ref_chosen, lp_ref_rejected):
-            pol_logratio = lp_cur_chosen - lp_cur_rejected
-            ref_logratio = lp_ref_chosen - lp_ref_rejected
+        match method:
+            case "dpo" | "cdpo":
+                def pairwise_loss(lp_cur_chosen, lp_cur_rejected, lp_ref_chosen, lp_ref_rejected):
+                    chosen_logratio = self.beta*(lp_cur_chosen - lp_ref_chosen)
+                    rejected_logratio = self.beta*(lp_cur_rejected - lp_ref_rejected)
 
-            h = pol_logratio - ref_logratio
-            return -F.logsigmoid(self.beta * h) * (1 - self.eps) - F.logsigmoid(-self.beta * h)*self.eps
+                    h = chosen_logratio - rejected_logratio
+                    return -F.logsigmoid(h) * (1 - self.eps) - F.logsigmoid(-h)*self.eps
+            case "ipo":
+                def pairwise_loss(lp_cur_chosen, lp_cur_rejected, lp_ref_chosen, lp_ref_rejected):
+                    chosen_logratio = lp_cur_chosen - lp_ref_chosen
+                    rejected_logratio = lp_cur_rejected - lp_ref_rejected
 
-        f1 = torch.vmap(pairwise_loss, in_dims=(None, 0, None, 0)) # vmap over multiple rejects
+                    h = chosen_logratio - rejected_logratio
+                    return (h - 1/(2 * self.beta)) ** 2
+            case "rso":
+                def pairwise_loss(lp_cur_chosen, lp_cur_rejected, lp_ref_chosen, lp_ref_rejected):
+                    chosen_logratio = self.beta*(lp_cur_chosen - lp_ref_chosen)
+                    rejected_logratio = self.beta*(lp_cur_rejected - lp_ref_rejected)
+
+                    h = chosen_logratio - rejected_logratio
+                    return (1 - h).clamp(max=0)
+
+        multi_pairwise_loss = torch.vmap(pairwise_loss, in_dims=(None, 0, None, 0)) # vmap over multiple rejections
         
         def listwise_loss(lp_cur_chosen, lp_ref_chosen, rank_chosen, lps_cur, lps_ref, ranks):
-            valid_comps = (ranks > rank_chosen).float()
-            comps = f1(lp_cur_chosen, lps_cur, lp_ref_chosen, lps_ref) * valid_comps
-            return comps.sum() / valid_comps.sum()
+            valid_comps = ranks > rank_chosen
+            comps = multi_pairwise_loss(lp_cur_chosen, lps_cur, lp_ref_chosen, lps_ref) * valid_comps
+            return comps.sum() / (valid_comps.sum() + (valid_comps.sum() == 0))
 
-        f2 = torch.vmap(listwise_loss, in_dims=(0, 0, 0, None, None, None))
+        multi_listwise_losss = torch.vmap(listwise_loss, in_dims=(0, 0, 0, None, None, None))
         def batchwise_loss(lps_cur, lps_ref, ranks):
-            valid_comps = (ranks != -100).float() * (ranks != -100)
-            comps = f2(lps_cur, lps_ref, ranks, lps_cur, lps_ref, ranks) * valid_comps
-            return comps.sum() / valid_comps.sum()
+            valid_comps = (ranks != -100) * (ranks != torch.max(ranks))
+            comps = multi_listwise_losss(lps_cur, lps_ref, ranks, lps_cur, lps_ref, ranks) * valid_comps
+            return comps.sum() / (valid_comps.sum() + (valid_comps.sum() == 0))
 
-        batched_loss = torch.vmap(batchwise_loss, in_dims=(0, 0, 0))
-        self.dpo_loss = lambda lps_cur, lps_ref, ranks: batched_loss(lps_cur, lps_ref, ranks).sum() / lps_cur.shape[0]
+        self.batched_loss = torch.vmap(batchwise_loss, in_dims=(0, 0, 0))
 
     def training_step(self, batch, batch_idx):
         ranks = batch['ranks']
@@ -59,7 +83,7 @@ class DPOWrapper(Wrapper):
             return None
 
         self.consecutive_nans = 0
-        loss = self.dpo_loss(lp_cur, lp_ref, ranks)
+        loss = self.batched_loss(lp_cur, lp_ref, ranks)
 
         self.log('train/loss', loss)
 

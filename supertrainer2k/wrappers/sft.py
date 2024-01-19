@@ -42,7 +42,8 @@ class SFTWrapper(Wrapper):
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        logits, mask = self.get_logits(self.model, batch)
+        with torch.no_grad():
+            logits, mask = self.get_logits(self.model, batch)
 
         loss = -(logits * mask).sum() / mask.sum()
         if torch.isnan(loss) or torch.isinf(loss):

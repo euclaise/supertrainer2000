@@ -89,7 +89,6 @@ class Preprocessor:
 
 
         def map_fn(row):
-
             def extract(resp):
                 input_ids = []
                 labels = []
@@ -198,7 +197,7 @@ class Preprocessor:
         datamodule: DataModule,
         tokenizer: PreTrainedTokenizer,
         column_name: str = 'messages',
-        role_names: Sequence[str, str] = ('instruction', 'response'),
+        role_names: Sequence[str, str] = ('user', 'assistant', 'system'),
         msg_keys: Sequence[str, str] = ('text', 'role'),
         max_length: Optional[int] = None,
         truncate: bool = False,
@@ -214,7 +213,7 @@ class Preprocessor:
             for msg in row[column_name]:
                 toks = tokenizer.encode(msg[msg_keys[0]], **tokenizer_kwargs)
                 input_ids += toks
-                if msg[msg_keys[1]] ==  role_names[0]:
+                if msg[msg_keys[1]] ==  role_names[0] or msg[msg_keys[1]] == role_names[2]:
                     labels += [-100]*len(toks)
                 elif msg[msg_keys[1]] == role_names[1]:
                     labels += toks
@@ -233,7 +232,7 @@ class Preprocessor:
         datamodule = datamodule.map(map_fn)
             
         if not truncate and max_length != None:
-            datamodule = datamodule.filter(lambda row: all(len(x) <= max_length for x in row['input_ids']))
+            datamodule = datamodule.filter(lambda row: len(row['input_ids']) <= max_length)
             
         return datamodule
 
@@ -270,5 +269,48 @@ class Preprocessor:
 
         if not truncate and max_length != None:
             datamodule = datamodule.filter(lambda row: len(row['input_ids']) <= max_length)
+
+        return datamodule
+
+
+    @staticmethod
+    def stepbystep_instruction_response(
+        datamodule: DataModule,
+        tokenizer: PreTrainedTokenizer,
+        column_names: Sequence[str, str] = ('instruction', 'rationale', 'answer'),
+        max_length: Optional[int] = None,
+        truncate: bool = False,
+        tokenizer_kwargs: Dict = {},
+    ):
+        if 'add_special_tokens' not in tokenizer_kwargs:
+            tokenizer_kwargs['add_special_tokens'] = False
+
+        def map_fn(row):
+            instruction = tokenizer.encode(row[column_names[0]], **tokenizer_kwargs)
+            rationale = tokenizer.encode(row[column_names[1]], **tokenizer_kwargs)
+            answer = tokenizer.encode(row[column_names[2]], **tokenizer_kwargs)
+            
+            rationale_ids = instruction + rationale
+            answer_ids = instruction + answer
+            rationale_labels = [-100]*len(instruction) + rationale
+            answer_labels = [-100]*len(instruction) + answer
+
+            if truncate and max_length != None:
+                rationale_ids = rationale_ids[:max_length]
+                rationale_labels = rationale_labels[:max_length]
+                answer_ids = answer_ids[:max_length]
+                answer_labels = answer_labels[:max_length]
+    
+            return {
+                'rationale_ids': rationale_ids,
+                'answer_ids': answer_ids,
+                'rationale_labels': rationale_labels,
+                'answer_labels': answer_labels,
+            }
+            
+        datamodule = datamodule.map(map_fn)
+
+        if not truncate and max_length != None:
+            datamodule = datamodule.filter(lambda row: len(row['rationale_ids']) <= max_length and len(row['answer_ids']) <= max_length)
 
         return datamodule

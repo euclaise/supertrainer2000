@@ -30,6 +30,32 @@ class DataCollator:
                 attention_mask=attention_mask
             )
 
+    class StepByStep:
+        def __init__(self, pad_id=0):
+            self.pad_id = pad_id
+
+        def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
+            ids = [d['answer_ids'] for d in instances] + [d['rationale_ids'] for d in instances]
+            labs = [d['answer_labels'] for d in instances] + [d['rationale_labels'] for d in instances]
+
+            max_seq_len = max(len(x) for x in ids)
+            pad_len = lambda x: max_seq_len - len(x)
+
+            input_ids = [torch.tensor(x + [self.pad_id]*pad_len(x), dtype=torch.long) for x in ids]
+            input_ids = torch.stack(input_ids)
+            
+            labels = [torch.tensor(x + [-100]*pad_len(x), dtype=torch.long) for x in labs]
+            labels = torch.stack(labels)
+
+            attention_mask = [torch.tensor([True]*len(x) + [False]*pad_len(x), dtype=torch.bool) for x in ids]
+            attention_mask = torch.stack(attention_mask)
+
+            return dict(
+                input_ids=input_ids,
+                labels=labels,
+                attention_mask=attention_mask
+            )
+
     class Ranked:
         def __init__(self, pad_id=0):
             self.pad_id = pad_id

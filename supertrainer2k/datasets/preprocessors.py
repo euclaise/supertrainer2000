@@ -198,7 +198,7 @@ class Preprocessor:
         tokenizer: PreTrainedTokenizer,
         column_name: str = 'messages',
         role_names: Sequence[str, str] = ('user', 'assistant', 'system'),
-        msg_keys: Sequence[str, str] = ('text', 'role'),
+        msg_keys: Sequence[str, str] = ('content', 'role'),
         max_length: Optional[int] = None,
         truncate: bool = False,
         tokenizer_kwargs: Dict = {},
@@ -277,7 +277,7 @@ class Preprocessor:
     def stepbystep_instruction_response(
         datamodule: DataModule,
         tokenizer: PreTrainedTokenizer,
-        column_names: Sequence[str, str] = ('instruction', 'rationale', 'answer'),
+        column_names: Sequence[str, str] = ('instruction_rationale', 'instruction_answer', 'rationale', 'answer'),
         max_length: Optional[int] = None,
         truncate: bool = False,
         tokenizer_kwargs: Dict = {},
@@ -286,14 +286,16 @@ class Preprocessor:
             tokenizer_kwargs['add_special_tokens'] = False
 
         def map_fn(row):
-            instruction = tokenizer.encode(row[column_names[0]], **tokenizer_kwargs)
-            rationale = tokenizer.encode(row[column_names[1]], **tokenizer_kwargs)
-            answer = tokenizer.encode(row[column_names[2]], **tokenizer_kwargs)
+            instruction_rationale = tokenizer.encode(row[column_names[0]], **tokenizer_kwargs)
+            instruction_answer = tokenizer.encode(row[column_names[1]], **tokenizer_kwargs)
+
+            rationale = tokenizer.encode(row[column_names[2]], **tokenizer_kwargs)
+            answer = tokenizer.encode(row[column_names[3]], **tokenizer_kwargs)
             
-            rationale_ids = instruction + rationale
-            answer_ids = instruction + answer
-            rationale_labels = [-100]*len(instruction) + rationale
-            answer_labels = [-100]*len(instruction) + answer
+            rationale_ids = instruction_rationale + rationale
+            answer_ids = instruction_answer + answer
+            rationale_labels = [-100]*len(instruction_rationale) + rationale
+            answer_labels = [-100]*len(instruction_answer) + answer
 
             if truncate and max_length != None:
                 rationale_ids = rationale_ids[:max_length]

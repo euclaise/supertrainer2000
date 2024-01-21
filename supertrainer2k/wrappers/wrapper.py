@@ -134,11 +134,11 @@ class Wrapper(L.LightningModule):
             self.optimizer_args['lr'] = self.lr
             _apply_optimizer_in_backward(
                 self.optimizer_cls,
-                self.model.parameters(),
+                params,
                 optimizer_kwargs = self.optimizer_args
             )
 
-            self.optimizer = _DummyOptimizer(params)
+            self.optimizer = _DummyOptimizer(params, lr=self.lr)
         else:  
             self.optimizer = self.optimizer_cls(params, lr=self.lr, **self.optimizer_args)
 

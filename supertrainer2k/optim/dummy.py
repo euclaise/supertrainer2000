@@ -7,9 +7,10 @@ from torch.optim import Optimizer
 class _DummyOptimizer(Optimizer):
     def __init__(
         self,
-        params
+        params,
+        lr
     ):
-        super(_DummyOptimizer, self).__init__(params, {'lr': 0.0})
+        super(_DummyOptimizer, self).__init__(params, {'lr': lr})
 
 
     def step(self, closure = None):

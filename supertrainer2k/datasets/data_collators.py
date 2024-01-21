@@ -35,8 +35,16 @@ class DataCollator:
             self.pad_id = pad_id
 
         def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
-            ids = [d['answer_ids'] for d in instances] + [d['rationale_ids'] for d in instances]
-            labs = [d['answer_labels'] for d in instances] + [d['rationale_labels'] for d in instances]
+            ids = []
+            labs = []
+
+            for d in instances:
+                if 'input_ids' in d and d['input_ids'] is not None:
+                    ids.append(d['input_ids'])
+                    labs.append(d['labels'])
+                else:
+                    ids += [d['answer_ids'] + d['rationale_ids']]
+                    labs += [d['answer_labels'] + d['rationale_labels']]
 
             max_seq_len = max(len(x) for x in ids)
             pad_len = lambda x: max_seq_len - len(x)

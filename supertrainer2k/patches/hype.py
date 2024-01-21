@@ -13,10 +13,10 @@ class HyPeLayer(nn.Module):
         self.sigma = sigma
         self.noise = torch.randn_like if normal else torch.rand_like
     
-    def forward(self, hidden_states,**kwargs):
+    def forward(self, hidden_states, *args, **kwargs):
         eps = torch.rand_like(hidden_states)
         xs = hidden_states + self.sigma*eps
-        return self.orig(xs, **kwargs)
+        return self.orig(xs, *args, **kwargs)
 
     def unpatch(self):
         return self.orig

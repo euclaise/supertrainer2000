@@ -105,7 +105,7 @@ class DataCollator:
                 for s, seq in enumerate(ce_ids):
                     for t, tok in enumerate(seq):
                         ce_input_ids[s, t] = tok
-                        ce_labels[s, t] = ce_labs[b][s][t]
+                        ce_labels[s, t] = ce_labs[s][t]
                 
                 return {
                     'input_ids': input_ids,

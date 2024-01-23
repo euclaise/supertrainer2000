@@ -20,7 +20,7 @@ class PROWrapper(Wrapper):
         use_average: bool = True,
         mixce: Optional[float] = None,
         detach_negatives: bool = False,
-        external_ce_labels: bool = False
+        external_ce_labels: bool = False,
         *args,
         **kwargs
     ):

@@ -11,11 +11,12 @@
 		python310
 		poetry
 		stdenv.cc.cc.lib
-		cudatoolkit linuxPackages.nvidia_x11
+		ninja
+		cudaPackages_12_1.cudatoolkit linuxPackages.nvidia_x11
 		snappy
 	];
 	shellHook = ''
-	export CUDA_PATH=${pkgs.cudatoolkit}
+	export CUDA_PATH=${pkgs.cudaPackages_12_1.cudatoolkit}
 	export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath [
 		pkgs.stdenv.cc.cc
 		pkgs.linuxPackages.nvidia_x11
@@ -24,7 +25,6 @@
 	export EXTRA_LDFLAGS="-L/lib -L${pkgs.linuxPackages.nvidia_x11}/lib"
 	export EXTRA_CCFLAGS="-I/usr/include"
 
-	poetry run pip install flash-attn --no-build-isolation
 	exec poetry shell
 	'';
 }

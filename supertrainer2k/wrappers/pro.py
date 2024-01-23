@@ -20,6 +20,7 @@ class PROWrapper(Wrapper):
         use_average: bool = True,
         mixce: Optional[float] = None,
         detach_negatives: bool = False,
+        external_ce_labels: bool = False
         *args,
         **kwargs
     ):
@@ -36,6 +37,7 @@ class PROWrapper(Wrapper):
         self.beta = beta
         self.mixce = mixce
         self.detach_negatives = detach_negatives
+        self.external_ce_labels = external_ce_labels
             
         def rank_loss_inner(logprob_chosen, rank, logprobs, ranks):
             mask = (ranks > rank)
@@ -72,18 +74,28 @@ class PROWrapper(Wrapper):
         logits, mask = self.get_logits(self.model, batch)
         logprobs = (logits * mask).sum(dim=-1) / (mask.sum(dim=-1) + (mask.sum(dim=-1) == 0))
 
+
+        if self.external_ce_labels:
+            batch_ce = {
+                'input_ids': batch['ce_ids'],
+                'labels': batch['ce_labels'].
+            }
+            ce_logits, ce_mask = self.get_logits(self.model, batch)
+            ce_logprobs = (ce_logits *ce_mask).sum(dim=-1) / (ce_mask.sum(dim=-1) + (ce_mask.sum(dim=-1) == 0))
+
         if self.mixce is not None:
-            lm_losses = -logits
+            lm_losses = -logits if not self.external_ce_labels else -ce_logits
             q = torch.exp(-lm_losses.detach())
             lm_losses = self.mixce * lm_losses + (1 - self.mixce)*q*lm_losses
             lm_losses = (lm_losses * mask).sum(dim=-1) / (mask.sum(dim=-1) + (mask.sum(dim=-1) == 0))
         else:
-            lm_losses = -logprobs
+            lm_losses = -logprobs if not self.external_ce_labels else -ce_logits
             
         mask = mask.sum(dim=-1)
-        lm_loss = (lm_losses[ranks == 0] * mask[ranks == 0]).sum() / mask[ranks == 0].sum()
-
-            
+        if self.external_ce_labels:
+            lm_loss = (lm_losses * ce_mask).sum() / ce_mask.sum()
+        else:
+            lm_loss = (lm_losses[ranks == 0] * mask[ranks == 0]).sum() / mask[ranks == 0].sum()
 
         bsz, n_seqs = logprobs.shape
         rank_loss = self.rank_loss_batched(logprobs, ranks, mask)

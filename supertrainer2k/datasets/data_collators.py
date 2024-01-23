@@ -65,14 +65,14 @@ class DataCollator:
             )
 
     class Ranked:
-        def __init__(self, pad_id=0):
+        def __init__(self, pad_id=0, external_ce_labels=False):
             self.pad_id = pad_id
+            self.external_ce_labels=external_ce_labels
             
         def __call__(self, batch):
             ids = [x['input_ids'] for x in batch]
             labs = [x['labels'] for x in batch]
             rankl = [x['ranks'] for x in batch]
-
         
             max_toks = max(max(len(y) for y in x) for x in ids)
             max_seqs = max(len(x) for x in ids)
@@ -89,6 +89,32 @@ class DataCollator:
                         labels[b, s, t] = labs[b][s][t]
                         attention_mask[b, s, t] = True
                     ranks[b, s] = rankl[b][s]
+
+
+            
+
+            if self.external_ce_labels:
+                ce_ids = [x['ce_ids'] for x in batch]
+                ce_labs = [x['ce_labels'] for x in batch]
+
+                max_toks = max(len(s) for s in ce_ids)
+                
+                ce_input_ids = torch.ones((len(ids), max_toks), dtype=torch.long) * self.pad_id
+                ce_labels = torch.ones((len(labs), max_toks), dtype=torch.long) * -100
+                
+                for s, seq in enumerate(ce_ids):
+                    for t, tok in enumerate(seq):
+                        ce_input_ids[s, t] = tok
+                        ce_labels[s, t] = ce_labs[b][s][t]
+                
+                return {
+                    'input_ids': input_ids,
+                    'labels': labels,
+                    'ranks': ranks,
+                    'attention_mask': attention_mask,
+                    'ce_ids': ce_ids
+                }
+
 
             return {
                 'input_ids': input_ids,

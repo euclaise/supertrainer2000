@@ -78,6 +78,7 @@ class Preprocessor:
         column_names: Sequence[str, str] = ('text', 'masked', 'chosen', 'rejected'),
         max_length: Optional[int] = None,
         truncate: bool = False,
+        external_ce_labels: Optional[str] = None,
         tokenizer_kwargs: Dict = {}
     ):
         if 'add_special_tokens' not in tokenizer_kwargs:
@@ -100,7 +101,16 @@ class Preprocessor:
 
             correct = extract(row[column_names[2]])
             incorrect = [extract(x) for x in row[column_names[3]]]
-
+            if external_ce_labels is not None:
+                gold = extract(row[external_ce_labels])
+                return {
+                    'ce_ids': gold[0],
+                    'ce_labels': gold[1],
+                    'input_ids': [correct[0]] + [i[0] for i in incorrect],
+                    'labels': [correct[1]] + [i[1] for i in incorrect],
+                    'ranks': [0] + [1]*len(incorrect),
+                }
+                
             return {
                 'input_ids': [correct[0]] + [i[0] for i in incorrect],
                 'labels': [correct[1]] + [i[1] for i in incorrect],

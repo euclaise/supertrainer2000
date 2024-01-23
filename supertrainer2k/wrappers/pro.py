@@ -78,7 +78,7 @@ class PROWrapper(Wrapper):
         if self.external_ce_labels:
             batch_ce = {
                 'input_ids': batch['ce_ids'],
-                'labels': batch['ce_labels'].
+                'labels': batch['ce_labels']
             }
             ce_logits, ce_mask = self.get_logits(self.model, batch)
             ce_logprobs = (ce_logits *ce_mask).sum(dim=-1) / (ce_mask.sum(dim=-1) + (ce_mask.sum(dim=-1) == 0))

@@ -34,7 +34,7 @@ class QuantEmbedding(nn.Module):
         return res.to(self.weight.device).bfloat16()
 
 def apply_quantemb(model, alpha, seq_len):
-    patch_model(model, [nn.Embedding], lambda m: QuantEmbedding(m, alpha, seq_len))
+    patch_model(model, [nn.Embedding], lambda m: QuantEmbedding(m, alpha, seq_len), ignore=[QuantEmbedding])
 
 
 def remove_quantemb(model):

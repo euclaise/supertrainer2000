@@ -23,7 +23,7 @@ class NEFTEmbedding(nn.Module):
         return self.emb
         
 def apply_neft(model, alpha, seq_len):
-    patch_model(model, [nn.Embedding, QuantEmbedding], lambda m: NEFTEmbedding(m, alpha, seq_len))
+    patch_model(model, [nn.Embedding, QuantEmbedding], lambda m: NEFTEmbedding(m, alpha, seq_len), ignore=[NEFTEmbedding])
 
 def remove_neft(model):
     patch_model(model, [NEFTEmbedding], lambda m: m.unpatch())

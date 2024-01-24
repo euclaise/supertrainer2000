@@ -8,15 +8,18 @@ def patch_model(
     model: torch.nn.Module,
     to_replace: List[Type[TorchModule]],
     patch_fn: Callable[[TorchModule], TorchModule],
-    name_constraints: Callable[[str], bool] = lambda x: True
+    name_constraints: Callable[[str], bool] = lambda x: True,
+    ignore: List[Type[TorchModule]] = []
 ):
     """Replaces all `to_replace` submodules which meet `name_constraints` with `replace_fn(submodule)`"""
-    for name, submodule in model.named_children():
-        for r in to_replace:
+    for r in to_replace:
+        for name, submodule in model.named_children():
+            if any(isinstance(submodule, i) for i in ignore):
+                continue
             if isinstance(submodule, r) and name_constraints(name):
                 setattr(model, name, patch_fn(submodule))
                 continue
-            patch_model(submodule, to_replace, patch_fn, name_constraints)
+            patch_model(submodule, to_replace, patch_fn, name_constraints, ignore)
 
 
 class DummyStrategy(Strategy): # Dummy strategy to keep HF's device placement                                                                                                                                                                         

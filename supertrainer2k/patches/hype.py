@@ -23,7 +23,7 @@ class HyPeLayer(nn.Module):
         
 def apply_hype(model, layer_class, sigma=1e-5, normal=True):
     assert layer_class is not None
-    patch_model(model, [layer_class], lambda m: HyPeLayer(m, sigma, normal))
+    patch_model(model, [layer_class], lambda m: HyPeLayer(m, sigma, normal), ignore=HyPeLayer)
 
 def remove_hype(model):
     patch_model(model, [HyPeLayer], lambda m: m.unpatch())

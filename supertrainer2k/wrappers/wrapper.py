@@ -128,9 +128,6 @@ class Wrapper(L.LightningModule):
     def configure_optimizers(self):
         params = [p for p in self.model.parameters() if p.requires_grad]
         if self.adalite_backward:
-            if self.trainer.accumulate_grad_batches > 1:
-                raise ValueError("Gradient accumulation is incompatible with Adalite-style backwarsds passes. Please pass adalite_backward=False to your Wrapper, or do not use gradient accumulation.")
-
             self.optimizer_args['lr'] = self.lr
             _apply_optimizer_in_backward(
                 self.optimizer_cls,

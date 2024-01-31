@@ -11,7 +11,7 @@ class DataCollator:
         def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
             ids = [d['input_ids'] for d in instances]
 
-            if 'labels' in d[0]:
+            if 'labels' in instances[0]:
                 labs = [d['labels'] for d in instances]
             else:
                 labs = [d['input_ids'] for d in instances]

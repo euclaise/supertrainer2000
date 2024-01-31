@@ -93,6 +93,10 @@ class Wrapper(L.LightningModule):
         seq_len = orig_shape[-1]
         
         flat_input_ids = batch['input_ids'].view(-1, seq_len)[:, :-1].contiguous()
+        if 'attention_mask' in batch:
+            flat_attn_mask = batch['attention_mask'].view(-1, seq_len)[:, :-1].contiguous()
+        else:
+            flat_attn_mask = torch.ones_like(flat_input_ids).bool()
         flat_attn_mask = batch['attention_mask'].view(-1, seq_len)[:, :-1].contiguous()
         flat_labels = batch['labels'].view(-1, seq_len)[:, 1:].contiguous()
 

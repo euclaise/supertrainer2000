@@ -117,7 +117,7 @@ class DataCollator:
                     'labels': labels,
                     'ranks': ranks,
                     'attention_mask': attention_mask,
-                    'ce_ids': ce_ids,
+                    'ce_ids': ce_input_ids,
                     'ce_labels': ce_labels
                 }
 

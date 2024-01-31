@@ -80,7 +80,7 @@ class PROWrapper(Wrapper):
                 'input_ids': batch['ce_ids'],
                 'labels': batch['ce_labels']
             }
-            ce_logits, ce_mask = self.get_logits(self.model, batch)
+            ce_logits, ce_mask = self.get_logits(self.model, batch_ce)
             ce_logprobs = (ce_logits *ce_mask).sum(dim=-1) / (ce_mask.sum(dim=-1) + (ce_mask.sum(dim=-1) == 0))
 
         if self.mixce is not None:

@@ -44,6 +44,9 @@ class Adalite(Optimizer):
         for group in self.param_groups:
             for p in group['params']:
                 alpha = group['lr']
+
+                if p.grad is None:
+                    continue
                 
                 g = p.grad.data
                 state = self.state[p]
@@ -52,7 +55,7 @@ class Adalite(Optimizer):
                     # Initialize state
                     state['step'] = 0
 
-                    state['c'] = torch.zeros_like(p.mean(dim=tuple(range(len(p.shape) - 1)), keepdim=True))
+                    state['c'] = torch.zeros_like(p.mean(dim=tuple(range(len(p.shape) - 1)), keepdim=False))
                     if group['momentum_beta'] != 0.0:
                         state['m'] = torch.zeros_like(p)
                     ###
@@ -60,7 +63,7 @@ class Adalite(Optimizer):
                 state['step'] += 1
 
                 if group['centralize'] and sum(g.shape) > 1:
-                    g.sub_(g.mean(dim=tuple(range(len(g.shape) - 1)), keepdim=True))
+                    g.sub_(g.mean(dim=tuple(range(1, len(g.shape))), keepdim=True))
 
                 beta_t = 1.0 - math.pow(state['step'], -group['beta_decay'])
                 u = g.square()

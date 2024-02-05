@@ -67,7 +67,7 @@ class Adalite(Optimizer):
 
                 c_e = state['c']
                 while c_e.dim() < g.dim():
-                    c_e = c_e.unsqueeze(-1)
+                    c_e = c_e.unsqueeze(0)
 
                 u.mul_(1-beta_t).add_(c_e.broadcast_to(g.shape), alpha=beta_t)
                 u.add_(group['eps'])

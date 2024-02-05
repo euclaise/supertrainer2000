@@ -60,7 +60,7 @@ class Adalite(Optimizer):
                 state['step'] += 1
 
                 if group['centralize'] and sum(g.shape) > 1:
-                    g.sub_(g.mean(dim=tuple(range(1, len(g.shape))), keepdim=True))
+                    g.sub_(g.mean(dim=tuple(range(len(g.shape) - 1)), keepdim=True))
 
                 beta_t = 1.0 - math.pow(state['step'], -group['beta_decay'])
                 u = g.square()

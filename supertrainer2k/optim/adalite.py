@@ -52,7 +52,7 @@ class Adalite(Optimizer):
                     # Initialize state
                     state['step'] = 0
 
-                    state['c'] = torch.zeros(p.shape[0], device=p.device, dtype=p.dtype)
+                    state['c'] = torch.zeros_like(p.mean(dim=tuple(range(len(p.shape) - 1)), keepdim=True))
                     if group['momentum_beta'] != 0.0:
                         state['m'] = torch.zeros_like(p)
                     ###
@@ -71,7 +71,7 @@ class Adalite(Optimizer):
 
                 u.mul_(1-beta_t).add_(c_e.broadcast_to(g.shape), alpha=beta_t)
                 u.add_(group['eps'])
-                state['c'] = u.mean(dim=tuple(range(1, len(u.shape))), keepdim=False) # Take mean over all dims except first
+                state['c'] = u.mean(dim=tuple(range(len(u.shape) - 1)), keepdim=False) # Take mean over all dims except first
 
                 m = u.rsqrt() * g
                 

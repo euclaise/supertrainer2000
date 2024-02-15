@@ -30,7 +30,7 @@ class Adaheavy(Optimizer):
             momentum_beta=momentum_beta
         )
 
-        super(Adalite, self).__init__(params, defaults)
+        super(Adaheavy, self).__init__(params, defaults)
 
 
     def step(self, closure = None):

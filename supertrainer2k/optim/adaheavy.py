@@ -72,7 +72,7 @@ class Adaheavy(Optimizer):
                 
                 m.mul_(group['momentum_beta']).add_(g, alpha=1-group['momentum_beta'])
 
-                u = m * u.rsqrt()
+                u = m * v.rsqrt()
                 
                 u.div_(max(1.0, u.square().mean().sqrt()))
 

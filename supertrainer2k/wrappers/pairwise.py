@@ -17,7 +17,7 @@ class PairwiseWrapper(Wrapper): # https://arxiv.org/abs/2401.08417
         self,
         beta: float = 0.1, 
         eps: float = 0.0,
-        method: Literal["rrhf", "cpo"] = "rrhf",
+        method: Literal["rrhf", "cpo"] = "cpo",
         normalize_length: bool = True,
         mixce: Optional[float] = None,
         *args, **kwargs

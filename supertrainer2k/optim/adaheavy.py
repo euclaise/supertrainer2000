@@ -3,21 +3,18 @@ from torch.optim import Optimizer
 import warnings
 import math
 
-class Adalite(Optimizer):
+class Adaheavy(Optimizer):
     def __init__(
         self,
         params,
         lr: float,
         eps: float = 1e-5,
-        Lambda: float = 0.01, # Akin to weight decay
+        Lambda: float = 0.01,
         beta_decay: float = 0.8,
         centralize: bool = True,
         use_rms: bool = True,
-        momentum_beta: float = 0.0
+        momentum_beta: float = 0.9
     ):
-        if momentum_beta != 0.0:
-            warnings.warn("Note that Adalite with a non-zero momentum_beta takes significantly more memory than default Adalite.")
-
         assert eps >= 0. and eps < 1., "Invalid eps value"
         assert Lambda >= 0. and Lambda <= 1., "Invalid Lambda value"
         assert beta_decay >= 0. and beta_decay <= 1., "Invalid beta_decay value"
@@ -52,44 +49,40 @@ class Adalite(Optimizer):
                 state = self.state[p]
 
                 if len(state) == 0:
-                    # Initialize state
                     state['step'] = 0
-
-                    state['c'] = torch.zeros_like(p.mean(dim=tuple(range(len(p.shape) - 1)), keepdim=False))
-                    if group['momentum_beta'] != 0.0:
-                        state['m'] = torch.zeros_like(p)
-                    ###
+                    state['v'] = torch.zeros_like(p)
+                    state['g_prev'] = torch.zeros_like(p)
+                    state['m'] = torch.zeros_like(p)
 
                 state['step'] += 1
 
                 if group['centralize'] and sum(g.shape) > 1:
                     g.sub_(g.mean(dim=tuple(range(1, len(g.shape))), keepdim=True))
 
-                beta_t = 1.0 - math.pow(state['step'], -group['beta_decay'])
-                u = g.square()
+                beta1_t = 1.0 - math.pow(state['step'], -group['beta_decay'])
 
-                c_e = state['c']
-                while c_e.dim() < g.dim():
-                    c_e = c_e.unsqueeze(0)
-
-                u.mul_(1-beta_t).add_(c_e.broadcast_to(g.shape), alpha=beta_t)
-                state['c'] = u.mean(dim=tuple(range(len(u.shape) - 1)), keepdim=False) # Take mean over all dims except first
-                u.add_(group['eps'])
-
-                m = u.rsqrt() * g
                 
-                m.div_(max(1.0, m.square().mean().sqrt()))
+                state['m'].mul_(group['momentum_beta']).add_(g, alpha=1-group['momentum_beta'])
+                m = state['m']
+                
+                g_prov = state['g_prev']
+                
+                state['v'].mul_(1-beta1_t).add_(g.square(), alpha=beta1_t)
+                v = state['v'] + group['eps']
+                
+                m.mul_(group['momentum_beta']).add_(g, alpha=1-group['momentum_beta'])
+
+                u = m * u.rsqrt()
+                
+                u.div_(max(1.0, u.square().mean().sqrt()))
 
                 p_norm = p.norm()
                 g_norm = g.norm()
 
                 if p_norm != 0. and g_norm != 0.:
-                    m.mul_(p_norm / g_norm)
-                    m.add_(p - p/p_norm, alpha=group['Lambda'])
+                    u.mul_(p_norm / g_norm)
+                    u.add_(p - p/p_norm, alpha=group['Lambda'])
 
-                if group['momentum_beta'] != 0.:
-                    state['m'].mul_(group['momentum_beta']).add_(m, alpha=1-group['momentum_beta'])
-                    m = state['m']
 
-                p.data.add_(m, alpha=-alpha)
+                p.data.add_(u, alpha=-alpha)
         return loss

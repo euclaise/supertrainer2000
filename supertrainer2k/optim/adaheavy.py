@@ -67,16 +67,12 @@ class Adaheavy(Optimizer):
 
                 
                 state['m'].mul_(group['momentum_beta']).add_(g, alpha=1-group['momentum_beta'])
-                m = state['m']
-                
-                g_prov = state['g_prev']
-                
+                                
                 state['v'].mul_(1-beta1_t).add_(g.square(), alpha=beta1_t)
-                v = state['v'] + group['eps']
                 
-                m.mul_(group['momentum_beta']).add_(g, alpha=1-group['momentum_beta'])
+                u = state['m'].mul(group['momentum_beta']).add_(g, alpha=1-group['momentum_beta'])
 
-                u = m * v.rsqrt()
+                u.mul_((state['v'] + group['eps']).rsqrt())
                 
                 u.div_(max(1.0, u.square().mean().sqrt()))
 
@@ -84,7 +80,7 @@ class Adaheavy(Optimizer):
                 g_norm = g.norm()
 
                 if p_norm != 0. and g_norm != 0.:
-                    m.mul_((p_norm / g_norm.clamp(min=group['eps2'])).clamp(min=group['min_trust_ratio']))
+                    u.mul_((p_norm / g_norm.clamp(min=group['eps2'])).clamp(min=group['min_trust_ratio']))
                     u.add_(p - p/p_norm, alpha=group['Lambda'])
 
 

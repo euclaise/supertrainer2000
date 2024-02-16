@@ -9,6 +9,8 @@ class Adaheavy(Optimizer):
         params,
         lr: float,
         eps: float = 1e-5,
+        eps2: float = 1e-3,
+        min_trust_ratio: float = 1e-3,
         Lambda: float = 0.01,
         beta_decay: float = 0.8,
         centralize: bool = True,
@@ -20,9 +22,11 @@ class Adaheavy(Optimizer):
         assert beta_decay >= 0. and beta_decay <= 1., "Invalid beta_decay value"
         assert momentum_beta >= 0. and momentum_beta <= 1., "Invalid momentum_beta value"
 
-        defaults = dict(
+         defaults = dict(
             lr=lr,
             eps=eps,
+            eps2=eps,
+            min_trust_ratio=min_trust_ratio,
             Lambda=Lambda,
             beta_decay=beta_decay,
             centralize=centralize,
@@ -80,7 +84,7 @@ class Adaheavy(Optimizer):
                 g_norm = g.norm()
 
                 if p_norm != 0. and g_norm != 0.:
-                    u.mul_(p_norm / g_norm)
+                    m.mul_((p_norm / g_norm.clamp(min=group['eps2'])).clamp(min=group['min_trust_ratio']))
                     u.add_(p - p/p_norm, alpha=group['Lambda'])
 
 

@@ -22,7 +22,7 @@ class Adaheavy(Optimizer):
         assert beta_decay >= 0. and beta_decay <= 1., "Invalid beta_decay value"
         assert momentum_beta >= 0. and momentum_beta <= 1., "Invalid momentum_beta value"
 
-         defaults = dict(
+        defaults = dict(
             lr=lr,
             eps=eps,
             eps2=eps,

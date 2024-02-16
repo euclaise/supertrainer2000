@@ -28,7 +28,7 @@ class Adalite(Optimizer):
         defaults = dict(
             lr=lr,
             eps=eps,
-            eps2=eps,
+            eps2=eps2,
             min_trust_ratio=min_trust_ratio,
             Lambda=Lambda,
             beta_decay=beta_decay,

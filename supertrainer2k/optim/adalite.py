@@ -54,7 +54,7 @@ class Adalite(Optimizer):
                 if group['centralize'] and sum(g.shape) > 1:
                     g.sub_(g.mean(dim=tuple(range(1, len(g.shape))), keepdim=True))
 
-                beta_t = 1.0 - math.pow(state['step'], group['beta_decay'])
+                beta_t = 1.0 - math.pow(state['step'], -group['beta_decay'])
                 v = g.square()
 
                 c_e = state['c']
@@ -76,9 +76,7 @@ class Adalite(Optimizer):
                 else:
                     trust_ratio = 1.0
 
-                u.add_(p.data, alpha=group['Lambda'])
-
-                u.add_(p.data, alpha=group['Lambda'])
+                u.add_(p.data * v.mean().add(group['eps']).sqrt(), alpha=group['Lambda'])
 
                 p.data.add_(m, alpha=-alpha)
         return loss

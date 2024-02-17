@@ -70,7 +70,7 @@ class Adaheavy(Optimizer):
                 if group['centralize'] and sum(g.shape) > 1:
                     g.sub_(g.mean(dim=tuple(range(1, len(g.shape))), keepdim=True))
 
-                beta1_t = 1.0 - math.pow(state['step'], group['beta_decay'])
+                beta1_t = 1.0 - math.pow(state['step'], -group['beta_decay'])
 
                 
                 # m1 = beta*(m1 + m2) + (1-beta)*u
@@ -94,14 +94,11 @@ class Adaheavy(Optimizer):
                 else:
                     trust_ratio = 1
 
-                u.add_(p.data, alpha=group['Lambda'])
-                # LAMB scales the weight decay by trust ratio
-                # However, to match adaptive weight decay, I remove this scaling
-                # See: https://proceedings.neurips.cc/paper_files/paper/2023/file/f9d7d6c695bc983fcfb5b70a5fbdfd2f-Paper-Conference.pdf
-
+                u.add_(p.data * state['v'].mean().add(group['eps']).sqrt(), alpha=group['Lambda'])
+                
                 p.data.add_(u, alpha=-alpha)
 
-                if group['lookahead'] and (state['step'] + 1) % group['k'] == 0:
-                    state['ema'].mul_(group['ema_beta']).add_(p, alpha=1-group['ema_beta'])
-                    p.data.copy_(state['ema'])
+                #if group['lookahead'] and (state['step'] + 1) % group['k'] == 0:
+                #    state['ema'].mul_(group['ema_beta']).add_(p, alpha=1-group['ema_beta'])
+                #    p.data.copy_(state['ema'])
         return loss

@@ -66,20 +66,10 @@ class Adaheavy(Optimizer):
 
                 beta1_t = 1.0 - math.pow(state['step'], -group['beta_decay'])
 
-                # Double EMA
-                # m1 = beta*(m1 + m2) + (1-beta)*g
-                # m2 = beta*m2 + (1-beta)*(m1 - m1_pre)
-                m1_prev = state['m1']
-                state['m1'] = (state['m1'] + state['m2']).mul_(group['m_beta1']).add_(g, alpha=1-group['m_beta1'])
-                state['m2'].mul_(group['m_beta2']).add_(state['m1'], alpha=1-group['m_beta2']).sub_(m1_prev, alpha=1-group['m_beta2'])
-                                
-                u = state['m1'] + state['m2']
-                #u.div_(1 - (group['m_beta1'] * group['m_beta2'])**state['step']) # bias correction, may not be needed, see https://arxiv.org/pdf/2110.10828.pdf
-
                 # Second moment
                 state['v'].mul_(1-beta1_t).add_(g.square(), alpha=beta1_t)
 
-                u.mul_((state['v'] + group['eps']).rsqrt())
+                u = g * (state['v'] + group['eps']).rsqrt()
 
                 if group['use_rms']:
                     u.div_(max(1.0, u.square().mean().sqrt()))
@@ -90,6 +80,17 @@ class Adaheavy(Optimizer):
                 if p_norm != 0. and g_norm != 0.:
                     u.mul_((p_norm / g_norm.clamp(min=group['eps2'])).clamp(min=group['min_trust_ratio']))
                     u.add_(p - p/p_norm, alpha=group['Lambda'])
+
+                
+                # Double EMA, computed on updates as per https://arxiv.org/pdf/2002.04839.pdf
+                # m1 = beta*(m1 + m2) + (1-beta)*u
+                # m2 = beta*m2 + (1-beta)*(m1 - m1_pre)
+                m1_prev = state['m1']
+                state['m1'] = (state['m1'] + state['m2']).mul_(group['m_beta1']).add_(u, alpha=1-group['m_beta1'])
+                state['m2'].mul_(group['m_beta2']).add_(state['m1'], alpha=1-group['m_beta2']).sub_(m1_prev, alpha=1-group['m_beta2'])
+                                
+                u = state['m1'] + state['m2']
+                #u.div_(1 - (group['m_beta1'] * group['m_beta2'])**state['step']) # bias correction, may not be needed, see https://arxiv.org/pdf/2110.10828.pdf
 
 
                 p.data.add_(u, alpha=-alpha)

@@ -14,16 +14,10 @@ class Adalite(Optimizer):
         weight_decay: float = 0.01,
         beta_decay: float = 0.8,
         centralize: bool = True,
-        use_rms: bool = True,
-        momentum_beta: float = 0.0
     ):
-        if momentum_beta != 0.0:
-            warnings.warn("Note that Adalite with a non-zero momentum_beta takes significantly more memory than default Adalite.")
-
         assert eps >= 0. and eps < 1., "Invalid eps value"
         assert weight_decay >= 0. and weight_decay <= 1., "Invalid weight_decay value"
         assert beta_decay >= 0. and beta_decay <= 1., "Invalid beta_decay value"
-        assert momentum_beta >= 0. and momentum_beta <= 1., "Invalid momentum_beta value"
 
         defaults = dict(
             lr=lr,
@@ -32,9 +26,7 @@ class Adalite(Optimizer):
             min_trust_ratio=min_trust_ratio,
             weight_decay=weight_decay,
             beta_decay=beta_decay,
-            centralize=centralize,
-            use_rms=use_rms,
-            momentum_beta=momentum_beta
+            centralize=centralize
         )
 
         super(Adalite, self).__init__(params, defaults)
@@ -56,13 +48,11 @@ class Adalite(Optimizer):
                 state = self.state[p]
 
                 if len(state) == 0:
-                    # Initialize state
                     state['step'] = 0
 
                     state['c'] = torch.zeros_like(p.mean(dim=tuple(range(len(p.shape) - 1)), keepdim=False))
                     if group['momentum_beta'] != 0.0:
                         state['m'] = torch.zeros_like(p)
-                    ###
 
                 state['step'] += 1
 
@@ -76,7 +66,7 @@ class Adalite(Optimizer):
                 while c_e.dim() < g.dim():
                     c_e = c_e.unsqueeze(0)
 
-                u.mul_(1-beta_t).add_(c_e.broadcast_to(g.shape), alpha=beta_t)
+                u.mul_(beta_t).add_(c_e.broadcast_to(g.shape), alpha=1-beta_t)
                 state['c'] = u.mean(dim=tuple(range(len(u.shape) - 1)), keepdim=False) # Take mean over all dims except first
                 u.add_(group['eps'])
 
@@ -97,8 +87,8 @@ class Adalite(Optimizer):
                 else:
                     trust_ratio = 1.0
 
-                effective_step_size = trust_ratio * torch.rsqrt(state['v'].mean() + group['eps']) / rms_factor
-                u.sub_(group['weight_decay'] * effective_step_size * p)
+
+                u.add_(p.data, alpha=group['Lambda'])
 
                 if group['momentum_beta'] != 0.:
                     state['m'].mul_(group['momentum_beta']).add_(m, alpha=1-group['momentum_beta'])

@@ -11,16 +11,18 @@ class Adaheavy(Optimizer):
         eps: float = 1e-5,
         eps2: float = 1e-3,
         min_trust_ratio: float = 1e-3,
-        weight_decay: float = 0.01,
+        Lambda: float = 0.01,
         beta_decay: float = 0.8,
         centralize: bool = True,
         use_rms: bool = True,
         m_beta1: float = 0.9,
         m_beta2: float = 0.99,
-        k: float = 1
+        n: float = 1,
+        k: int = 5,
+        ema_beta: float = 0.5
     ):
         assert eps >= 0. and eps < 1., "Invalid eps value"
-        assert weight_decay >= 0. and weight_decay <= 1., "Invalid weight_decay value"
+        assert Lambda >= 0. and Lambda <= 1., "Invalid Lambda value"
         assert beta_decay >= 0. and beta_decay <= 1., "Invalid beta_decay value"
 
         defaults = dict(
@@ -28,13 +30,15 @@ class Adaheavy(Optimizer):
             eps=eps,
             eps2=eps2,
             min_trust_ratio=min_trust_ratio,
-            weight_decay=weight_decay,
+            Lambda=Lambda,
             beta_decay=beta_decay,
             centralize=centralize,
             use_rms=use_rms,
             m_beta1=m_beta1,
             m_beta2=m_beta2,
-            k=k
+            n=n,
+            k=k,
+            ema_beta=ema_beta
         )
 
         super(Adaheavy, self).__init__(params, defaults)
@@ -60,7 +64,8 @@ class Adaheavy(Optimizer):
                     state['v'] = torch.zeros_like(p)
                     state['m1'] = torch.zeros_like(p)
                     state['m2'] = torch.zeros_like(p)
-
+                    state['ema'] = p.data.clone()
+                    
                 state['step'] += 1
 
                 if group['centralize'] and sum(g.shape) > 1:
@@ -74,32 +79,34 @@ class Adaheavy(Optimizer):
                 m1_new = state['m1'].add(state['m2']).mul_(group['m_beta1']).add_(g, alpha=1-group['m_beta1'])
                 state['m2'].mul_(group['m_beta2']).add_(m1_new, alpha=1-group['m_beta2']).sub_(state['m1'], alpha=1-group['m_beta2'])
                 state['m1'].copy_(m1_new)
-                u = state['m1'].add(state['m2'], alpha=group['k'])
+                u = state['m1'].add(state['m2'], alpha=group['n'])
                 #u.div_(1 - (group['m_beta1'] * group['m_beta2'])**state['step']) # bias correction, may not be needed, see https://arxiv.org/pdf/2110.10828.pdf
 
+                state['v'].mul_(beta1_t).add_(g.square(), alpha=1-beta1_t) # Momentum-in-momentum https://openreview.net/forum?id=qQz1UKDCiy7
 
-                # Second moment
-                state['v'].mul_(1-beta1_t).add_(g.square(), alpha=beta1_t)
 
-                u = g.mul(state['v'].add(group['eps']).rsqrt())
-                
-                if group['use_rms']:
-                    rms_factor = max(1.0, u.square().mean().sqrt())
-                    u.div_(rms_factor)
-                else:
-                    rms_factor = 1.0
+                u.mul_(state['v'].add(group['eps']).rsqrt())
 
-                p_norm = p.norm()
+                p_norm = p.norm().clamp(max=10)
                 g_norm = g.norm()
+                #print(g_norm)
 
-                if g_norm != 0.:
+                if p_norm != 0 and g_norm != 0:
                     trust_ratio = (p_norm / g_norm.clamp(min=group['eps2'])).clamp(min=group['min_trust_ratio'])
+                    #print(f"t: {trust_ratio}")
                     u.mul_(trust_ratio)
                 else:
-                    trust_ratio = 1.0
+                    trust_ratio = 1
 
-                effective_step_size = trust_ratio * torch.rsqrt(state['v'].mean() + group['eps']) / rms_factor
-                u.sub_(group['weight_decay'] * effective_step_size * p)
+                u.add_(p.data, alpha=group['Lambda'])
+                # LAMB scales the weight decay by trust ratio
+                # However, to match adaptive weight decay, I remove this scaling
+                # See: https://proceedings.neurips.cc/paper_files/paper/2023/file/f9d7d6c695bc983fcfb5b70a5fbdfd2f-Paper-Conference.pdf
 
                 p.data.add_(u, alpha=-alpha)
+
+                #if (state['step'] + 1) % group['k'] == 0:
+                #    state['ema'].mul_(group['ema_beta']).add_(p, alpha=1-group['ema_beta'])
+                #    p.data.copy_(state['ema'])
+        #exit()
         return loss

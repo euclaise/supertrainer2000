@@ -3,7 +3,7 @@ from torch.optim import Optimizer
 import warnings
 import math
 
-class Adaheavy(Optimizer):
+class Lilith(Optimizer):
     def __init__(
         self,
         params,
@@ -14,7 +14,9 @@ class Adaheavy(Optimizer):
         beta_v: float = 0.999,
         weight_decay: float = 0.01,
         m_norm_min: float = 1e-4,
-        ratio_min: float = 1e-4
+        ratio_min: float = 1e-4,
+        lookahead_k: int = 5,
+        lookahead_beta: float = 0.5
     ):
         defaults = dict(
             lr=lr,
@@ -24,10 +26,12 @@ class Adaheavy(Optimizer):
             beta_v=beta_v,
             weight_decay=weight_decay,
             m_norm_min=m_norm_min,
-            ratio_min=ratio_min
+            ratio_min=ratio_min,
+            lookahead_k = lookahead_k,
+            lookahead_beta=lookahead_beta
         )
 
-        super(Adaheavy, self).__init__(params, defaults)
+        super(Lilith, self).__init__(params, defaults)
 
     @torch.no_grad
     def step(self, closure):
@@ -49,9 +53,11 @@ class Adaheavy(Optimizer):
                     state['m_avg1'] = torch.zeros_like(grad)
                     state['m_avg2'] = torch.zeros_like(grad)
                     state['v_avg'] = torch.zeros_like(grad)
+                    state['ema'] = p.data.clone()
 
                 state['step'] += 1
 
+                
 
                 if sum(grad.shape) > 1:
                     trust_ratio = (p.data.norm() / grad.norm().clip(min=1e-4)).clip(min=group['ratio_min'])
@@ -74,5 +80,8 @@ class Adaheavy(Optimizer):
 
                 p.data.add_(u, alpha=-group['lr'])
 
+                if state['step'] % group['lookahead_k'] == 0:
+                    state['ema'].lerp_(p.data, 1-group['lookahead_beta'])
+                    p.data.copy_(state['ema'])
 
         return loss

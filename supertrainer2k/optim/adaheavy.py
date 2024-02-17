@@ -17,7 +17,7 @@ class Adaheavy(Optimizer):
         use_rms: bool = True,
         m_beta1: float = 0.9,
         m_beta2: float = 0.99,
-        k: float = 2
+        k: float = 1
     ):
         assert eps >= 0. and eps < 1., "Invalid eps value"
         assert Lambda >= 0. and Lambda <= 1., "Invalid Lambda value"

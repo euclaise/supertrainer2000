@@ -8,97 +8,71 @@ class Adaheavy(Optimizer):
         self,
         params,
         lr: float,
-        eps: float = 1e-5,
-        eps2: float = 1e-3,
-        min_trust_ratio: float = 1e-3,
-        Lambda: float = 0.01,
-        beta_decay: float = 0.8,
-        centralize: bool = True,
-        use_rms: bool = True,
-        m_beta1: float = 0.9,
-        m_beta2: float = 0.99,
-        n: float = 1,
-        k: int = 5,
-        ema_beta: float = 0.5,
-        lookahead: bool = True
+        eps: float = 1e-8,
+        beta1_m: float = 0.9,
+        beta2_m: float = 0.9,
+        beta_v: float = 0.999,
+        weight_decay: float = 0.01,
+        m_norm_min: float = 1e-4,
+        ratio_min: float = 1e-4
     ):
         defaults = dict(
             lr=lr,
             eps=eps,
-            eps2=eps2,
-            min_trust_ratio=min_trust_ratio,
-            Lambda=Lambda,
-            beta_decay=beta_decay,
-            centralize=centralize,
-            use_rms=use_rms,
-            m_beta1=m_beta1,
-            m_beta2=m_beta2,
-            n=n,
-            k=k,
-            ema_beta=ema_beta,
-            lookahead=lookahead
+            beta1_m=beta1_m,
+            beta2_m=beta2_m,
+            beta_v=beta_v,
+            weight_decay=weight_decay,
+            m_norm_min=m_norm_min,
+            ratio_min=ratio_min
         )
 
         super(Adaheavy, self).__init__(params, defaults)
 
-
-    def step(self, closure = None):
+    @torch.no_grad
+    def step(self, closure):
         loss = None
         if closure is not None:
             loss = closure()
-        
+
         for group in self.param_groups:
             for p in group['params']:
-                alpha = group['lr']
-
                 if p.grad is None:
                     continue
-                
-                g = p.grad.data
+
+                grad = p.grad.data
+
                 state = self.state[p]
 
                 if len(state) == 0:
                     state['step'] = 0
-                    state['v'] = torch.zeros_like(p)
-                    state['m1'] = torch.zeros_like(p)
-                    state['m2'] = torch.zeros_like(p)
-                    if group['lookahead']:
-                        state['ema'] = p.data.clone()
-                    
+                    state['m_avg1'] = torch.zeros_like(grad)
+                    state['m_avg2'] = torch.zeros_like(grad)
+                    state['v_avg'] = torch.zeros_like(grad)
+
                 state['step'] += 1
 
-                if group['centralize'] and sum(g.shape) > 1:
-                    g.sub_(g.mean(dim=tuple(range(1, len(g.shape))), keepdim=True))
 
-                beta1_t = 1.0 - math.pow(state['step'], -group['beta_decay'])
+                if sum(grad.shape) > 1:
+                    trust_ratio = (p.data.norm() / grad.norm().clip(min=1e-4)).clip(min=group['ratio_min'])
+                    grad.sub_(grad.mean(dim=tuple(range(1, len(grad.shape))), keepdim=True))
+                    grad.mul_(trust_ratio)
+
+                m_avg1_prev = state['m_avg1'].clone()
+                state['m_avg1'].add_(state['m_avg2']).lerp_(grad, 1-group['beta1_m'])
+                state['m_avg2'].lerp_(state['m_avg1'] - m_avg1_prev, 1-group['beta2_m'])
 
                 
-                # m1 = beta*(m1 + m2) + (1-beta)*u
-                # m2 = beta*m2 + (1-beta)*(m1 - m1_pre)
-                m1_new = state['m1'].add(state['m2']).mul_(group['m_beta1']).add_(g, alpha=1-group['m_beta1'])
-                state['m2'].mul_(group['m_beta2']).add_(m1_new, alpha=1-group['m_beta2']).sub_(state['m1'], alpha=1-group['m_beta2'])
-                state['m1'].copy_(m1_new)
-                u = state['m1'].add(state['m2'], alpha=group['n'])
+                u = state['m_avg1'] + state['m_avg2']
 
-                state['v'].mul_(beta1_t).add_(u.square(), alpha=1-beta1_t) # Momentum-in-momentum https://openreview.net/forum?id=qQz1UKDCiy7
-
-
-                u.mul_(state['v'].add(group['eps']).rsqrt())
-
-                p_norm = p.norm()
-                g_norm = g.norm()
-
-                if p_norm != 0 and g_norm != 0:
-                    trust_ratio = (p_norm / g_norm.clamp(min=group['eps2'])).clamp(min=group['min_trust_ratio'])
-                    u.mul_(trust_ratio)
-                else:
-                    trust_ratio = 1
-
-                u.add_(p.data * state['v'].mean().add(group['eps']).sqrt(), alpha=group['Lambda'])
                 
-                p.data.add_(u, alpha=-alpha)
+                state['v_avg'].lerp_(u.square(), 1-group['beta_v'])
 
-                #if group['lookahead'] and (state['step'] + 1) % group['k'] == 0:
-                #    state['ema'].mul_(group['ema_beta']).add_(p, alpha=1-group['ema_beta'])
-                #    p.data.copy_(state['ema'])
+                u.div_(state['v_avg'].sqrt() + group['eps'])
+
+                u.add_(p, alpha=group['weight_decay'])
+
+                p.data.add_(u, alpha=-group['lr'])
+
+
         return loss

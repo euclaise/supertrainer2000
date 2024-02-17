@@ -63,9 +63,8 @@ class Adalite(Optimizer):
 
                 v.mul_(beta_t).add_(c_e.broadcast_to(g.shape), alpha=1-beta_t)
                 state['c'] = v.mean(dim=tuple(range(len(v.shape) - 1)), keepdim=False) # Take mean over all dims except first
-                v.add_(group['eps'])
 
-                m = v.rsqrt() * g
+                m = g / (v.sqrt() + group['eps'])
                     
                 p_norm = p.norm()
                 g_norm = g.norm()
@@ -76,7 +75,7 @@ class Adalite(Optimizer):
                 else:
                     trust_ratio = 1.0
 
-                u.add_(p.data * v.mean().add(group['eps']).sqrt(), alpha=group['Lambda'])
+                u.add_(p.data, alpha=group['Lambda'])
 
                 p.data.add_(m, alpha=-alpha)
         return loss

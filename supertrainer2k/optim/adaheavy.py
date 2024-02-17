@@ -16,7 +16,8 @@ class Adaheavy(Optimizer):
         centralize: bool = True,
         use_rms: bool = True,
         m_beta1: float = 0.9,
-        m_beta2: float = 0.99
+        m_beta2: float = 0.99,
+        k: float = 2
     ):
         assert eps >= 0. and eps < 1., "Invalid eps value"
         assert Lambda >= 0. and Lambda <= 1., "Invalid Lambda value"
@@ -32,7 +33,8 @@ class Adaheavy(Optimizer):
             centralize=centralize,
             use_rms=use_rms,
             m_beta1=m_beta1,
-            m_beta2=m_beta2
+            m_beta2=m_beta2,
+            k=k
         )
 
         super(Adaheavy, self).__init__(params, defaults)
@@ -58,6 +60,7 @@ class Adaheavy(Optimizer):
                     state['v'] = torch.zeros_like(p)
                     state['m1'] = torch.zeros_like(p)
                     state['m2'] = torch.zeros_like(p)
+                    state['e_max'] = torch.zeros_like(p.mean())
 
                 state['step'] += 1
 
@@ -69,7 +72,7 @@ class Adaheavy(Optimizer):
                 # Second moment
                 state['v'].mul_(1-beta1_t).add_(g.square(), alpha=beta1_t)
 
-                u = g * (state['v'] + group['eps']).rsqrt()
+                u = g.mul(state['v'].add(group['eps']).rsqrt())
 
                 if group['use_rms']:
                     u.div_(max(1.0, u.square().mean().sqrt()))
@@ -85,11 +88,11 @@ class Adaheavy(Optimizer):
                 # Double EMA, computed on updates as per https://arxiv.org/pdf/2002.04839.pdf
                 # m1 = beta*(m1 + m2) + (1-beta)*u
                 # m2 = beta*m2 + (1-beta)*(m1 - m1_pre)
-                m1_prev = state['m1']
-                state['m1'] = (state['m1'] + state['m2']).mul_(group['m_beta1']).add_(u, alpha=1-group['m_beta1'])
+                m1_prev = state['m1'].clone()
+                state['m1'].add_(state['m2']).mul_(group['m_beta1']).add_(u, alpha=1-group['m_beta1'])
                 state['m2'].mul_(group['m_beta2']).add_(state['m1'], alpha=1-group['m_beta2']).sub_(m1_prev, alpha=1-group['m_beta2'])
                                 
-                u = state['m1'] + state['m2']
+                u = state['m1'].add(state['m2'], alpha=group['k'])
                 #u.div_(1 - (group['m_beta1'] * group['m_beta2'])**state['step']) # bias correction, may not be needed, see https://arxiv.org/pdf/2110.10828.pdf
 
 

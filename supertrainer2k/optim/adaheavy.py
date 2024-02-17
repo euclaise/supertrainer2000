@@ -56,9 +56,8 @@ class Adaheavy(Optimizer):
                 if len(state) == 0:
                     state['step'] = 0
                     state['v'] = torch.zeros_like(p)
-                    state['g_prev'] = torch.zeros_like(p)
-                    state['b'] = torch.zeros_like(p)
-                    state['l'] = torch.zeros_like(p)
+                    state['m1'] = torch.zeros_like(p)
+                    state['m2'] = torch.zeros_like(p)
 
                 state['step'] += 1
 
@@ -67,15 +66,18 @@ class Adaheavy(Optimizer):
 
                 beta1_t = 1.0 - math.pow(state['step'], -group['beta_decay'])
 
-                state['l'].add_(state['b']).mul_(group['m_beta1']).add_(g, alpha=1-group['m_beta1'])
-                state['b'].mul_(group['m_beta2']).add_(g, alpha=1-group['m_beta2']).sub_(state['g_prev'], alpha=1-group['m_beta2'])
-                state['g_prev'] = g
-                                                
-                
-                u = state['l'] + state['b']
-                u.div_(1 - (group['m_beta1'] * group['m_beta2'])**state['step'])
-                
-                state['v'].mul_(1-beta1_t).add_(u.square(), alpha=beta1_t)
+                # Double EMA
+                # m1 = beta*(m1 + m2) + (1-beta)*g
+                # m2 = beta*m2 + (1-beta)*(m1 - m1_pre)
+                m1_prev = state['m1']
+                state['m1'] = (state['m1'] + state['m2']).mul_(group['m_beta1']).add_(g, alpha=1-group['m_beta1'])
+                state['m2'].mul_(group['m_beta2']).add_(state['m1'], alpha=1-group['m_beta2']).sub_(m1_prev, alpha=1-group['m_beta2'])
+                                
+                u = state['m1'] + state['m2']
+                #u.div_(1 - (group['m_beta1'] * group['m_beta2'])**state['step']) # bias correction, may not be needed, see https://arxiv.org/pdf/2110.10828.pdf
+
+                # Second moment
+                state['v'].mul_(1-beta1_t).add_(g.square(), alpha=beta1_t)
 
                 u.mul_((state['v'] + group['eps']).rsqrt())
 

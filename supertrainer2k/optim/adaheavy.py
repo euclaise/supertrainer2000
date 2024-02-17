@@ -94,7 +94,7 @@ class Adaheavy(Optimizer):
                 else:
                     trust_ratio = 1
 
-                u.add_(p.data * g.mean().square().rsqrt(), alpha=group['Lambda'])
+                u.add_(p.data, alpha=group['Lambda'])
                 # LAMB scales the weight decay by trust ratio
                 # However, to match adaptive weight decay, I remove this scaling
                 # See: https://proceedings.neurips.cc/paper_files/paper/2023/file/f9d7d6c695bc983fcfb5b70a5fbdfd2f-Paper-Conference.pdf

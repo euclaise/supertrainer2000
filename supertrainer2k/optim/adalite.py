@@ -76,7 +76,7 @@ class Adalite(Optimizer):
                 else:
                     trust_ratio = 1.0
 
-                u.add_(p.data * g.mean().square().rsqrt(), alpha=group['Lambda'])
+                u.add_(p.data, alpha=group['Lambda'])
 
                 u.add_(p.data, alpha=group['Lambda'])
 

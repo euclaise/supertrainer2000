@@ -19,12 +19,9 @@ class Adaheavy(Optimizer):
         m_beta2: float = 0.99,
         n: float = 1,
         k: int = 5,
-        ema_beta: float = 0.5
+        ema_beta: float = 0.5,
+        lookahead: bool = True
     ):
-        assert eps >= 0. and eps < 1., "Invalid eps value"
-        assert Lambda >= 0. and Lambda <= 1., "Invalid Lambda value"
-        assert beta_decay >= 0. and beta_decay <= 1., "Invalid beta_decay value"
-
         defaults = dict(
             lr=lr,
             eps=eps,
@@ -38,7 +35,8 @@ class Adaheavy(Optimizer):
             m_beta2=m_beta2,
             n=n,
             k=k,
-            ema_beta=ema_beta
+            ema_beta=ema_beta,
+            lookahead=lookahead
         )
 
         super(Adaheavy, self).__init__(params, defaults)
@@ -64,14 +62,15 @@ class Adaheavy(Optimizer):
                     state['v'] = torch.zeros_like(p)
                     state['m1'] = torch.zeros_like(p)
                     state['m2'] = torch.zeros_like(p)
-                    state['ema'] = p.data.clone()
+                    if group['lookahead']:
+                        state['ema'] = p.data.clone()
                     
                 state['step'] += 1
 
                 if group['centralize'] and sum(g.shape) > 1:
                     g.sub_(g.mean(dim=tuple(range(1, len(g.shape))), keepdim=True))
 
-                beta1_t = 1.0 - math.pow(state['step'], -group['beta_decay'])
+                beta1_t = 1.0 - math.pow(state['step'], group['beta_decay'])
 
                 
                 # m1 = beta*(m1 + m2) + (1-beta)*u
@@ -80,33 +79,29 @@ class Adaheavy(Optimizer):
                 state['m2'].mul_(group['m_beta2']).add_(m1_new, alpha=1-group['m_beta2']).sub_(state['m1'], alpha=1-group['m_beta2'])
                 state['m1'].copy_(m1_new)
                 u = state['m1'].add(state['m2'], alpha=group['n'])
-                #u.div_(1 - (group['m_beta1'] * group['m_beta2'])**state['step']) # bias correction, may not be needed, see https://arxiv.org/pdf/2110.10828.pdf
 
-                state['v'].mul_(beta1_t).add_(g.square(), alpha=1-beta1_t) # Momentum-in-momentum https://openreview.net/forum?id=qQz1UKDCiy7
+                state['v'].mul_(beta1_t).add_(u.square(), alpha=1-beta1_t) # Momentum-in-momentum https://openreview.net/forum?id=qQz1UKDCiy7
 
 
                 u.mul_(state['v'].add(group['eps']).rsqrt())
 
-                p_norm = p.norm().clamp(max=10)
+                p_norm = p.norm()
                 g_norm = g.norm()
-                #print(g_norm)
 
                 if p_norm != 0 and g_norm != 0:
                     trust_ratio = (p_norm / g_norm.clamp(min=group['eps2'])).clamp(min=group['min_trust_ratio'])
-                    #print(f"t: {trust_ratio}")
                     u.mul_(trust_ratio)
                 else:
                     trust_ratio = 1
 
-                u.add_(p.data, alpha=group['Lambda'])
+                u.add_(p.data * g.mean().square().rsqrt(), alpha=group['Lambda'])
                 # LAMB scales the weight decay by trust ratio
                 # However, to match adaptive weight decay, I remove this scaling
                 # See: https://proceedings.neurips.cc/paper_files/paper/2023/file/f9d7d6c695bc983fcfb5b70a5fbdfd2f-Paper-Conference.pdf
 
                 p.data.add_(u, alpha=-alpha)
 
-                #if (state['step'] + 1) % group['k'] == 0:
-                #    state['ema'].mul_(group['ema_beta']).add_(p, alpha=1-group['ema_beta'])
-                #    p.data.copy_(state['ema'])
-        #exit()
+                if group['lookahead'] and (state['step'] + 1) % group['k'] == 0:
+                    state['ema'].mul_(group['ema_beta']).add_(p, alpha=1-group['ema_beta'])
+                    p.data.copy_(state['ema'])
         return loss

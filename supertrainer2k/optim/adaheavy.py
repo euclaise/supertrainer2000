@@ -9,7 +9,7 @@ class Adaheavy(Optimizer):
         params,
         lr: float,
         eps: float = 1e-5,
-        eps2: float = 1e-3,
+        eps2: float = 1e-2,
         min_trust_ratio: float = 1e-3,
         Lambda: float = 0.01,
         beta_decay: float = 0.8,
@@ -88,10 +88,9 @@ class Adaheavy(Optimizer):
                 # Double EMA, computed on updates as per https://arxiv.org/pdf/2002.04839.pdf
                 # m1 = beta*(m1 + m2) + (1-beta)*u
                 # m2 = beta*m2 + (1-beta)*(m1 - m1_pre)
-                m1_prev = state['m1'].clone()
-                state['m1'].add_(state['m2']).mul_(group['m_beta1']).add_(u, alpha=1-group['m_beta1'])
-                state['m2'].mul_(group['m_beta2']).add_(state['m1'], alpha=1-group['m_beta2']).sub_(m1_prev, alpha=1-group['m_beta2'])
-                                
+                m1_new = state['m1'].add(state['m2']).mul_(group['m_beta1']).add_(u, alpha=1-group['m_beta1'])
+                state['m2'].mul_(group['m_beta2']).add_(m1_new, alpha=1-group['m_beta2']).sub_(state['m1'], alpha=1-group['m_beta2'])
+                state['m1'].copy_(m1_new)
                 u = state['m1'].add(state['m2'], alpha=group['k'])
                 #u.div_(1 - (group['m_beta1'] * group['m_beta2'])**state['step']) # bias correction, may not be needed, see https://arxiv.org/pdf/2110.10828.pdf
 

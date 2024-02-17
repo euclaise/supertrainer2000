@@ -60,7 +60,6 @@ class Adaheavy(Optimizer):
                     state['v'] = torch.zeros_like(p)
                     state['m1'] = torch.zeros_like(p)
                     state['m2'] = torch.zeros_like(p)
-                    state['e_max'] = torch.zeros_like(p.mean())
 
                 state['step'] += 1
 
@@ -68,6 +67,16 @@ class Adaheavy(Optimizer):
                     g.sub_(g.mean(dim=tuple(range(1, len(g.shape))), keepdim=True))
 
                 beta1_t = 1.0 - math.pow(state['step'], -group['beta_decay'])
+
+                
+                # m1 = beta*(m1 + m2) + (1-beta)*u
+                # m2 = beta*m2 + (1-beta)*(m1 - m1_pre)
+                m1_new = state['m1'].add(state['m2']).mul_(group['m_beta1']).add_(g, alpha=1-group['m_beta1'])
+                state['m2'].mul_(group['m_beta2']).add_(m1_new, alpha=1-group['m_beta2']).sub_(state['m1'], alpha=1-group['m_beta2'])
+                state['m1'].copy_(m1_new)
+                u = state['m1'].add(state['m2'], alpha=group['k'])
+                #u.div_(1 - (group['m_beta1'] * group['m_beta2'])**state['step']) # bias correction, may not be needed, see https://arxiv.org/pdf/2110.10828.pdf
+
 
                 # Second moment
                 state['v'].mul_(1-beta1_t).add_(g.square(), alpha=beta1_t)
@@ -83,7 +92,7 @@ class Adaheavy(Optimizer):
                 p_norm = p.norm()
                 g_norm = g.norm()
 
-                if p_norm != 0. and g_norm != 0.:
+                if g_norm != 0.:
                     trust_ratio = (p_norm / g_norm.clamp(min=group['eps2'])).clamp(min=group['min_trust_ratio'])
                     u.mul_(trust_ratio)
                 else:
@@ -91,16 +100,6 @@ class Adaheavy(Optimizer):
 
                 effective_step_size = trust_ratio * torch.rsqrt(state['v'].mean() + group['eps']) / rms_factor
                 u.sub ((1 - 1/p_norm) * effective_step_size * p)
-                    
-                # m1 = beta*(m1 + m2) + (1-beta)*u
-                # m2 = beta*m2 + (1-beta)*(m1 - m1_pre)
-                m1_new = state['m1'].add(state['m2']).mul_(group['m_beta1']).add_(u, alpha=1-group['m_beta1'])
-                state['m2'].mul_(group['m_beta2']).add_(m1_new, alpha=1-group['m_beta2']).sub_(state['m1'], alpha=1-group['m_beta2'])
-                state['m1'].copy_(m1_new)
-                u = state['m1'].add(state['m2'], alpha=group['k'])
-                #u.div_(1 - (group['m_beta1'] * group['m_beta2'])**state['step']) # bias correction, may not be needed, see https://arxiv.org/pdf/2110.10828.pdf
-
-
 
                 p.data.add_(u, alpha=-alpha)
         return loss

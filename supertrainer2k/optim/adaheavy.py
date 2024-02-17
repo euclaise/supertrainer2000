@@ -9,7 +9,7 @@ class Adaheavy(Optimizer):
         params,
         lr: float,
         eps: float = 1e-5,
-        eps2: float = 1e-2,
+        eps2: float = 1e-3,
         min_trust_ratio: float = 1e-3,
         Lambda: float = 0.01,
         beta_decay: float = 0.8,
@@ -73,19 +73,25 @@ class Adaheavy(Optimizer):
                 state['v'].mul_(1-beta1_t).add_(g.square(), alpha=beta1_t)
 
                 u = g.mul(state['v'].add(group['eps']).rsqrt())
-
+                
                 if group['use_rms']:
-                    u.div_(max(1.0, u.square().mean().sqrt()))
+                    rms_factor = max(1.0, u.square().mean().sqrt())
+                    u.div_(rms_factor)
+                else:
+                    rms_factor = 1.0
 
                 p_norm = p.norm()
                 g_norm = g.norm()
 
                 if p_norm != 0. and g_norm != 0.:
-                    u.mul_((p_norm / g_norm.clamp(min=group['eps2'])).clamp(min=group['min_trust_ratio']))
-                    u.add_(p - p/p_norm, alpha=group['Lambda'])
+                    trust_ratio = (p_norm / g_norm.clamp(min=group['eps2'])).clamp(min=group['min_trust_ratio'])
+                    u.mul_(trust_ratio)
+                else:
+                    trust_ratio = 1.0
 
-                
-                # Double EMA, computed on updates as per https://arxiv.org/pdf/2002.04839.pdf
+                effective_step_size = trust_ratio * torch.rsqrt(state['v'].mean() + group['eps']) / rms_factor
+                u.sub ((1 - 1/p_norm) * effective_step_size * p)
+                    
                 # m1 = beta*(m1 + m2) + (1-beta)*u
                 # m2 = beta*m2 + (1-beta)*(m1 - m1_pre)
                 m1_new = state['m1'].add(state['m2']).mul_(group['m_beta1']).add_(u, alpha=1-group['m_beta1'])
@@ -93,6 +99,7 @@ class Adaheavy(Optimizer):
                 state['m1'].copy_(m1_new)
                 u = state['m1'].add(state['m2'], alpha=group['k'])
                 #u.div_(1 - (group['m_beta1'] * group['m_beta2'])**state['step']) # bias correction, may not be needed, see https://arxiv.org/pdf/2110.10828.pdf
+
 
 
                 p.data.add_(u, alpha=-alpha)

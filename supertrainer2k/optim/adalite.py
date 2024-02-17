@@ -82,14 +82,23 @@ class Adalite(Optimizer):
 
                 m = u.rsqrt() * g
                 
-                m.div_(max(1.0, m.square().mean().sqrt()))
-
+                if group['use_rms']:
+                    rms_factor = max(1.0, u.square().mean().sqrt())
+                    u.div_(rms_factor)
+                else:
+                    rms_factor = 1.0
+                    
                 p_norm = p.norm()
                 g_norm = g.norm()
 
                 if p_norm != 0. and g_norm != 0.:
-                    m.mul_((p_norm / g_norm.clamp(min=group['eps2'])).clamp(min=group['min_trust_ratio']))
-                    m.add_(p - p/p_norm, alpha=group['Lambda'])
+                    trust_ratio = (p_norm / g_norm.clamp(min=group['eps2'])).clamp(min=group['min_trust_ratio'])
+                    u.mul_(trust_ratio)
+                else:
+                    trust_ratio = 1.0
+
+                effective_step_size = trust_ratio * torch.rsqrt(state['v'].mean() + group['eps']) / rms_factor
+                u.sub ((1 - 1/p_norm) * effective_step_size * p)
 
                 if group['momentum_beta'] != 0.:
                     state['m'].mul_(group['momentum_beta']).add_(m, alpha=1-group['momentum_beta'])

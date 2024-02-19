@@ -13,9 +13,9 @@ class Lilith(Optimizer):
         beta2_m: float = 0.99,
         beta_v: float = 0.999,
         weight_decay: float = 0.01,
-        m_norm_min: float = 1e-4,
+        g_norm_min: float = 1e-4,
         ratio_min: float = 1e-4,
-        lookahead_k: int = 5,
+        lookahead_k: int = 0,
         lookahead_beta: float = 0.5
     ):
         defaults = dict(
@@ -25,7 +25,7 @@ class Lilith(Optimizer):
             beta2_m=beta2_m,
             beta_v=beta_v,
             weight_decay=weight_decay,
-            m_norm_min=m_norm_min,
+            g_norm_min=g_norm_min,
             ratio_min=ratio_min,
             lookahead_k = lookahead_k,
             lookahead_beta=lookahead_beta
@@ -58,20 +58,19 @@ class Lilith(Optimizer):
                 state['step'] += 1
 
                 if sum(grad.shape) > 1:
-                    trust_ratio = (p.data.norm() / grad.norm().clip(min=1e-4)).clip(min=group['ratio_min'])
+                    trust_ratio = (p.data.norm() / grad.norm().clip(min=group['g_norm_min'])).clip(min=group['ratio_min'])
                     grad.mul_(trust_ratio)
 
                 m_avg1_prev = state['m_avg1'].clone()
                 state['m_avg1'].add_(state['m_avg2']).lerp_(grad, 1-group['beta1_m'])
-                avg1 = state['m_avg1'] / (1 - group['beta1_m']**state['step'])
                 state['m_avg2'].lerp_(state['m_avg1'] - m_avg1_prev, 1-group['beta2_m'])
-                avg2 = state['m_avg2'] / (1 - group['beta2_m']**state['step'])
+
+                u = state['m_avg1'] + state['m_avg2']
 
                 state['v_avg'].lerp_(u.square(), 1-group['beta_v'])
-                v_avg = v_avg / (1 - group['beta_v'] ** state['step'])
+                v_avg = state['v_avg'] / (1 - group['beta_v'] ** state['step'])
 
-                u.div_(state['v_avg'].sqrt() + group['eps'])
-                u.div_(1 - group['beta_v']**state['step'])
+                u.div_((state['v_avg'] + group['eps']).sqrt())
 
                 u.add_(p, alpha=group['weight_decay'])
 

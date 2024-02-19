@@ -10,7 +10,7 @@ class Lilith(Optimizer):
         lr: float,
         eps: float = 1e-8,
         beta1_m: float = 0.9,
-        beta2_m: float = 0.9,
+        beta2_m: float = 0.99,
         beta_v: float = 0.999,
         weight_decay: float = 0.01,
         m_norm_min: float = 1e-4,
@@ -34,7 +34,7 @@ class Lilith(Optimizer):
         super(Lilith, self).__init__(params, defaults)
 
     @torch.no_grad
-    def step(self, closure=None):
+    def step(self, closure):
         loss = None
         if closure is not None:
             loss = closure()
@@ -57,31 +57,29 @@ class Lilith(Optimizer):
 
                 state['step'] += 1
 
-                
-
                 if sum(grad.shape) > 1:
                     trust_ratio = (p.data.norm() / grad.norm().clip(min=1e-4)).clip(min=group['ratio_min'])
-                    grad.sub_(grad.mean(dim=tuple(range(1, len(grad.shape))), keepdim=True))
                     grad.mul_(trust_ratio)
 
                 m_avg1_prev = state['m_avg1'].clone()
                 state['m_avg1'].add_(state['m_avg2']).lerp_(grad, 1-group['beta1_m'])
+                avg1 = state['m_avg1'] / (1 - group['beta1_m']**state['step'])
                 state['m_avg2'].lerp_(state['m_avg1'] - m_avg1_prev, 1-group['beta2_m'])
+                avg2 = state['m_avg2'] / (1 - group['beta2_m']**state['step'])
 
-                
-                u = state['m_avg1'] + state['m_avg2']
-
-                
                 state['v_avg'].lerp_(u.square(), 1-group['beta_v'])
+                v_avg = v_avg / (1 - group['beta_v'] ** state['step'])
 
                 u.div_(state['v_avg'].sqrt() + group['eps'])
+                u.div_(1 - group['beta_v']**state['step'])
 
                 u.add_(p, alpha=group['weight_decay'])
 
                 p.data.add_(u, alpha=-group['lr'])
 
-                if state['step'] % group['lookahead_k'] == 0:
-                    state['ema'].lerp_(p.data, 1-group['lookahead_beta'])
-                    p.data.copy_(state['ema'])
+                if group['lookahead_k'] != 0:
+                    if state['step'] % group['lookahead_k'] == 0:
+                        state['ema'].lerp_(p.data, 1-group['lookahead_beta'])
+                        p.data.copy_(state['ema'])
 
         return loss

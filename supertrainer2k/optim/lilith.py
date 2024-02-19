@@ -15,6 +15,7 @@ class Lilith(Optimizer):
         weight_decay: float = 0.01,
         g_norm_min: float = 1e-4,
         ratio_min: float = 1e-4,
+        acceleration: float = 1,
         lookahead_k: int = 0,
         lookahead_beta: float = 0.5
     ):
@@ -27,6 +28,7 @@ class Lilith(Optimizer):
             weight_decay=weight_decay,
             g_norm_min=g_norm_min,
             ratio_min=ratio_min,
+            accelreation=acceleration
             lookahead_k = lookahead_k,
             lookahead_beta=lookahead_beta
         )
@@ -65,7 +67,7 @@ class Lilith(Optimizer):
                 state['m_avg1'].add_(state['m_avg2']).lerp_(grad, 1-group['beta1_m'])
                 state['m_avg2'].lerp_(state['m_avg1'] - m_avg1_prev, 1-group['beta2_m'])
 
-                u = state['m_avg1'] + state['m_avg2']
+                u = state['m_avg1'] + group['acceleration']*state['m_avg2']
 
                 state['v_avg'].lerp_(u.square(), 1-group['beta_v'])
                 v_avg = state['v_avg'] / (1 - group['beta_v'] ** state['step'])

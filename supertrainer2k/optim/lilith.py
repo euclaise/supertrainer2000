@@ -28,7 +28,7 @@ class Lilith(Optimizer):
             weight_decay=weight_decay,
             g_norm_min=g_norm_min,
             ratio_min=ratio_min,
-            accelreation=acceleration
+            accelreation=acceleration,
             ema_k = ema_k,
             ema_beta=ema_beta
         )

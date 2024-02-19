@@ -55,7 +55,8 @@ class Lilith(Optimizer):
                     state['m_avg1'] = torch.zeros_like(grad)
                     state['m_avg2'] = torch.zeros_like(grad)
                     state['v_avg'] = torch.zeros_like(grad)
-                    state['ema'] = p.data.clone()
+                    if group['lookahead_k'] > 0:
+                        state['ema'] = p.data.clone()
 
                 state['step'] += 1
 

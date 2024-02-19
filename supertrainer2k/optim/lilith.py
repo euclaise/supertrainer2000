@@ -9,6 +9,7 @@ class Lilith(Optimizer):
         params,
         lr: float,
         eps: float = 1e-8,
+        eps2: float = 0,
         beta1_m: float = 0.9,
         beta2_m: float = 0.99,
         beta_v: float = 0.999,
@@ -31,6 +32,7 @@ class Lilith(Optimizer):
             acceleration=acceleration,
             ema_k = ema_k,
             ema_beta=ema_beta,
+            eps2=eps2
         )
 
         super(Lilith, self).__init__(params, defaults)
@@ -73,7 +75,7 @@ class Lilith(Optimizer):
                 state['v_avg'].lerp_(u.square(), 1-group['beta_v'])
                 v_avg = state['v_avg'] / (1 - group['beta_v'] ** state['step'])
 
-                u.div_((state['v_avg'] + group['eps']).sqrt())
+                u.div_((state['v_avg'] + group['eps']).sqrt() + group['eps2'])
 
                 u.add_(p, alpha=group['weight_decay'])
 

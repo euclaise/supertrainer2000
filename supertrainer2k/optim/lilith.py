@@ -16,8 +16,8 @@ class Lilith(Optimizer):
         g_norm_min: float = 1e-4,
         ratio_min: float = 1e-4,
         acceleration: float = 1,
-        lookahead_k: int = 0,
-        lookahead_beta: float = 0.5
+        ema_k: int = 0,
+        ema_beta: float = 0.99
     ):
         defaults = dict(
             lr=lr,
@@ -29,8 +29,8 @@ class Lilith(Optimizer):
             g_norm_min=g_norm_min,
             ratio_min=ratio_min,
             accelreation=acceleration
-            lookahead_k = lookahead_k,
-            lookahead_beta=lookahead_beta
+            ema_k = ema_k,
+            ema_beta=ema_beta
         )
 
         super(Lilith, self).__init__(params, defaults)
@@ -55,7 +55,7 @@ class Lilith(Optimizer):
                     state['m_avg1'] = torch.zeros_like(grad)
                     state['m_avg2'] = torch.zeros_like(grad)
                     state['v_avg'] = torch.zeros_like(grad)
-                    if group['lookahead_k'] > 0:
+                    if group['ema_k'] > 0:
                         state['ema'] = p.data.clone()
 
                 state['step'] += 1
@@ -79,9 +79,9 @@ class Lilith(Optimizer):
 
                 p.data.add_(u, alpha=-group['lr'])
 
-                if group['lookahead_k'] != 0:
-                    if state['step'] % group['lookahead_k'] == 0:
-                        state['ema'].lerp_(p.data, 1-group['lookahead_beta'])
+                if group['ema_k'] != 0:
+                    state['ema'].lerp_(p.data, group['ema_beta'])
+                    if state['step'] % group['ema_k'] == 0:
                         p.data.copy_(state['ema'])
 
         return loss

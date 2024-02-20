@@ -73,7 +73,7 @@ class Lilith(Optimizer):
                 state['v_avg'].lerp_(u.square(), 1-group['beta_v'])
                 v_avg = state['v_avg'] / (1 - group['beta_v'] ** state['step'])
 
-                u.div_((state['v_avg'] + group['eps']).sqrt())
+                u.div_((v_avg + group['eps']).sqrt())
 
                 u.add_(p, alpha=group['weight_decay'])
 

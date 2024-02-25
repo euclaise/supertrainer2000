@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "supertrainer2k"
+requires-python = ">=3.10"
+version = "2024.2.24"
+py_modules = ["supertrainer2k"]
+dependencies = [
+	"transformers>=4.38.0",
+	"datasets>=2.17.0",
+	"lightning>=2.1.0",
+	"pydantic"
+]
+
+[tool.hatch.build.targets.wheel]
+sources = ["supertrainer2k"]
+
+[project.scripts]
+supertrainer2k = "supertrainer2k:main"

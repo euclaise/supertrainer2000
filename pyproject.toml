@@ -12,18 +12,3 @@ transformers = "^4.36.2"
 datasets = "^2.16.1"
 lightning = "^2.1.3"
 pydantic = "^2.5.3"
-torch = {version = "^2.1.2+cu121", source = "cu121"}
-nvidia-cuda-runtime-cu12 = "^12.3.101"
-
-[[tool.poetry.source]]
-name = "cu121"
-url = "https://download.pytorch.org/whl/cu121"
-priority = "explicit"
-
-
-[tool.poetry.group.extras.dependencies]
-mosaicml-streaming = "^0.7.2"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"

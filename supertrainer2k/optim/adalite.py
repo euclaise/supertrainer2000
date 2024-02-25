@@ -2,80 +2,130 @@ import torch
 from torch.optim import Optimizer
 import warnings
 import math
+import torch.nn.functional as F
 
 class Adalite(Optimizer):
     def __init__(
         self,
         params,
         lr: float,
-        eps: float = 1e-5,
-        eps2: float = 1e-3,
-        min_trust_ratio: float = 1e-3,
-        Lambda: float = 0.01,
-        beta_decay: float = 0.8,
-        centralize: bool = True,
+        eps: float = 1e-6,
+        beta_m: float = 0.9,
+        beta_v: float = 0.999,
+        weight_decay: float = 0.01,
+        g_norm_min: float = 1e-10,
+        ratio_min: float = 1e-4,
+        svd_iter: int = 2,
+        eps2: float = 1e-10,
+        tau: float = 1.
     ):
         defaults = dict(
             lr=lr,
             eps=eps,
-            eps2=eps2,
-            min_trust_ratio=min_trust_ratio,
-            Lambda=Lambda,
+            beta_m=beta_m,
+            beta_v=beta_v,
             weight_decay=weight_decay,
-            beta_decay=beta_decay,
-            centralize=centralize
+            g_norm_min=g_norm_min,
+            ratio_min=ratio_min,
+            svd_iter=svd_iter,
+            eps2=eps2,
+            tau=tau
         )
 
         super(Adalite, self).__init__(params, defaults)
 
-
-    def step(self, closure = None):
+    @torch.no_grad
+    def step(self, closure=None):
         loss = None
         if closure is not None:
             loss = closure()
-        
+
         for group in self.param_groups:
             for p in group['params']:
-                alpha = group['lr']
-
                 if p.grad is None:
                     continue
-                
-                g = p.grad.data
+
+                grad = p.grad.data
+
+                if len(grad.shape) > 2:
+                    grad = gradreshape(grad.shape[0], -1)
+
                 state = self.state[p]
 
                 if len(state) == 0:
                     state['step'] = 0
 
-                    state['c'] = torch.zeros_like(p.mean(dim=tuple(range(len(p.shape) - 1)), keepdim=False))
 
+                    if len(p.shape) < 2:
+                        state['m_avg'] = torch.zeros_like(grad)
+                        state['v_avg'] = torch.zeros_like(grad)
+                    else:
+                        state['v_avg_0'] = torch.zeros_like(grad.mean(dim=1))
+                        state['v_avg_1'] = torch.zeros_like(grad.mean(dim=0))
+                        
+                        state['m_avg_c'] = torch.zeros_like(grad.mean(dim=1)[:, None])
+                        state['m_avg_r'] = torch.zeros_like(grad.mean(dim=0)[None, :])
+                        state['m_avg_u'] = torch.zeros_like(grad.mean().unsqueeze(0).unsqueeze(0))
+\
                 state['step'] += 1
 
-                if group['centralize'] and sum(g.shape) > 1:
-                    g.sub_(g.mean(dim=tuple(range(1, len(g.shape))), keepdim=True))
+                if sum(grad.shape) > 1:
+                    trust_ratio = (p.data.norm() / grad.norm().clip(min=group['g_norm_min'])).clip(min=group['ratio_min'])
+                    grad.mul_(trust_ratio)
 
-                beta_t = 1.0 - math.pow(state['step'], -group['beta_decay'])
-                v = g.square()
 
-                c_e = state['c']
-                while c_e.dim() < g.dim():
-                    c_e = c_e.unsqueeze(0)
 
-                v.mul_(beta_t).add_(c_e.broadcast_to(g.shape), alpha=1-beta_t)
-                state['c'] = v.mean(dim=tuple(range(len(v.shape) - 1)), keepdim=False) # Take mean over all dims except first
-
-                m = g / (v.sqrt() + group['eps'])
-                    
-                p_norm = p.norm()
-                g_norm = g.norm()
-
-                if p_norm != 0. and g_norm != 0.:
-                    trust_ratio = (p_norm / g_norm.clamp(min=group['eps2'])).clamp(min=group['min_trust_ratio'])
-                    u.mul_(trust_ratio)
+                if len(grad.shape) < 2:
+                    m = state['m_avg']
+                    v = state['v_avg']
                 else:
-                    trust_ratio = 1.0
+                    r = state['v_avg_0'][:, None]
+                    c = state['v_avg_1'][None, :]
+                    v = (r * c) / r.sum().clamp(min=group['eps2'])
+                    del r
+                    del c
+                    m = state['m_avg_c'] @ state['m_avg_u'] @ state['m_avg_r']
 
-                u.add_(p.data, alpha=group['Lambda'])
+                m.lerp_(grad, 1-group['beta_m'])
 
-                p.data.add_(m, alpha=-alpha)
+                v.lerp_((grad - m).square(), 1-group['beta_v'])
+                v_avg = v / (1 - group['beta_v'] ** state['step'])
+                
+
+                if len(grad.shape) == 2:
+                    imp_c = F.softmax(v.mean(dim=1),  dim=0)[:, None]
+                    imp_r = F.softmax(v.mean(dim=0), dim=0)[None, :]
+                    imp = imp_c * imp_r
+                    m.lerp_(grad, 1-imp)
+                    
+                u = m.lerp(grad, 1-group['beta_m'])
+
+                if len(grad.shape) < 2:
+                    state['m_avg'] = m
+                    state['v_avg'] = v
+                else:
+                    state['v_avg_0'] = v.sum(dim=1)
+                    state['v_avg_1'] = v.sum(dim=0) / v.sum().clamp(min=group['eps2'])
+                        
+                    imp_c = F.softmax(v.mean(dim=1) / group['tau'], dim=-1)[:, None]
+                    imp_r = F.softmax(v.mean(dim=0) / group['tau'], dim=-1)[None, :]
+                    del v
+
+                    C = ((m * imp_r).sum(dim=1))[:, None]
+                    R = ((m * imp_c).sum(dim=0))[None, :]
+
+                    s = (C.T @ m @ R.T) / (C.T @ C @ R @ R.T).clamp(min=group['eps2'])
+
+                    state['m_avg_c'] = C
+                    state['m_avg_r'] = R
+                    state['m_avg_u'] = s
+                del m
+ 
+
+                u.div_((v_avg + group['eps']).sqrt())
+                u.add_(p.data, alpha=group['weight_decay'])
+
+
+                p.data.add_(u.reshape(p.data.shape), alpha=-group['lr'])
+
         return loss

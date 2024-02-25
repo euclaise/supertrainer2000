@@ -9,7 +9,7 @@
  pkgs.mkShell {
 	buildInputs = with pkgs; [
 		python310
-		poetry
+		python310Packages.uv
 		stdenv.cc.cc.lib
 		ninja
 		cudaPackages_12_1.cudatoolkit linuxPackages.nvidia_x11
@@ -24,7 +24,5 @@
 	]}
 	export EXTRA_LDFLAGS="-L/lib -L${pkgs.linuxPackages.nvidia_x11}/lib"
 	export EXTRA_CCFLAGS="-I/usr/include"
-
-	exec poetry shell
 	'';
 }

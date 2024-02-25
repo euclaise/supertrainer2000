@@ -1,4 +1,4 @@
-transformers
-datasets
-lightning
+transformers>=4.38.0
+datasets>=2.17.0
+lightning>=2.1.0
 pydantic

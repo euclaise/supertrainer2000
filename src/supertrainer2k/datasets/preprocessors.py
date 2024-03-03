@@ -102,10 +102,10 @@ class Preprocessor:
             correct = extract(row[column_names[2]])
             incorrect = [extract(x) for x in row[column_names[3]]]
             if external_ce_labels is not None:
-                gold = extract(row[external_ce_labels])
+                gold = [extract(x) for x in row[external_ce_labels]]
                 return {
-                    'ce_ids': gold[0],
-                    'ce_labels': gold[1],
+                    'ce_ids': [g[0] for g in gold],
+                    'ce_labels': [g[1] for g in gold],
                     'input_ids': [correct[0]] + [i[0] for i in incorrect],
                     'labels': [correct[1]] + [i[1] for i in incorrect],
                     'ranks': [0] + [1]*len(incorrect),

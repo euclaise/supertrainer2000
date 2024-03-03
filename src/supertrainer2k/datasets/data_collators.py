@@ -80,16 +80,16 @@ class DataCollator:
             rankl = [x['ranks'] for x in batch]
         
             max_toks = max(max(len(y) for y in x) for x in ids)
-            max_seqs = max(len(x) for x in ids)
+            max_segs = max(len(x) for x in ids)
                         
-            input_ids = torch.ones((len(ids), max_seqs, max_toks), dtype=torch.long) * self.pad_id
-            labels = torch.ones((len(labs), max_seqs, max_toks), dtype=torch.long) * -100
-            ranks = torch.ones((len(ids), max_seqs), dtype=torch.long) * -100
-            attention_mask = torch.zeros((len(ids), max_seqs, max_toks), dtype=torch.bool)
+            input_ids = torch.ones((len(ids), max_segs, max_toks), dtype=torch.long) * self.pad_id
+            labels = torch.ones((len(labs), max_segs, max_toks), dtype=torch.long) * -100
+            ranks = torch.ones((len(ids), max_segs), dtype=torch.long) * -100
+            attention_mask = torch.zeros((len(ids), max_segs, max_toks), dtype=torch.bool)
 
-            for b, q in enumerate(ids):
-                for s, seq in enumerate(q):
-                    for t, tok in enumerate(seq):
+            for b, seq in enumerate(ids):
+                for s, seg in enumerate(seq):
+                    for t, tok in enumerate(seg):
                         input_ids[b, s, t] = tok
                         labels[b, s, t] = labs[b][s][t]
                         attention_mask[b, s, t] = True
@@ -102,15 +102,17 @@ class DataCollator:
                 ce_ids = [x['ce_ids'] for x in batch]
                 ce_labs = [x['ce_labels'] for x in batch]
 
-                max_toks = max(len(s) for s in ce_ids)
-                
-                ce_input_ids = torch.ones((len(ids), max_toks), dtype=torch.long) * self.pad_id
-                ce_labels = torch.ones((len(labs), max_toks), dtype=torch.long) * -100
-                
-                for s, seq in enumerate(ce_ids):
-                    for t, tok in enumerate(seq):
-                        ce_input_ids[s, t] = tok
-                        ce_labels[s, t] = ce_labs[s][t]
+                max_toks = max(max(len(y) for y in x) for x in ce_ids)
+                max_segs = max(len(x) for x in ce_ids)
+                           
+                ce_input_ids = torch.ones((len(ids), max_segs, max_toks), dtype=torch.long) * self.pad_id
+                ce_labels = torch.ones((len(labs), max_segs, max_toks), dtype=torch.long) * -100
+
+                for b, seq in enumerate(ce_ids):
+                    for s, seg in enumerate(seq):
+                        for t, tok in enumerate(seg):
+                            ce_input_ids[b, s, t] = tok
+                            ce_labels[b, s, t] = ce_labs[b][s][t]
                 
                 return {
                     'input_ids': input_ids,

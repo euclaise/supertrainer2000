@@ -4,9 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "supertrainer2k"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 version = "2024.2.24"
-packages = [ "src/supertrainer2k" ]
 dependencies = [
 	"transformers>=4.38.0",
 	"datasets>=2.17.0",
@@ -14,8 +13,6 @@ dependencies = [
 	"pydantic"
 ]
 
-[tool.hatch.build.targets.wheel]
-sources = ["src/supertrainer2k"]
 
-[project.scripts]
-supertrainer2k = "supertrainer2k:main"
+[project.urls]
+Homepage = "https://github.com/euclaise/supertrainer2000"

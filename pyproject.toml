@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "supertrainer2k"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 version = "2024.2.24"
 dependencies = [
 	"transformers>=4.38.0",

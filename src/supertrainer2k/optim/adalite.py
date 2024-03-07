@@ -48,7 +48,7 @@ class Adalite(Optimizer):
                 grad = p.grad.data
 
                 if len(grad.shape) > 2:
-                    grad = gradreshape(grad.shape[0], -1)
+                    grad = grad.reshape(grad.shape[0], -1)
 
                 state = self.state[p]
 
@@ -123,9 +123,11 @@ class Adalite(Optimizer):
  
 
                 u.div_((v_avg + group['eps']).sqrt())
+                
+                u = u.reshape(p.data.shape)
                 u.add_(p.data, alpha=group['weight_decay'])
 
 
-                p.data.add_(u.reshape(p.data.shape), alpha=-group['lr'])
+                p.data.add_(u, alpha=-group['lr'])
 
         return loss

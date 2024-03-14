@@ -81,7 +81,7 @@ class Lilith(Optimizer):
                 p.data.add_(u, alpha=-group['lr'])
 
                 if group['ema_k'] != 0:
-                    state['ema'].lerp_(p.data, group['ema_beta'])
+                    state['ema'].lerp_(p.data, 1-group['ema_beta'])
                     if state['step'] % group['ema_k'] == 0:
                         p.data.copy_(state['ema'])
 
